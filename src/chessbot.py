@@ -5,7 +5,7 @@ import numpy as np
 class ChessBot:
 	def best_move(self, board, depth=1):
 		self.player = board.turn
-		max_score = 0
+		max_score = -1
 		best_move = None
 		for move in board.legal_moves:
 			board.push(move)
@@ -20,19 +20,27 @@ class ChessBot:
 		moves = list(board.legal_moves)
 		if depth == 0 or len(moves) == 0:
 			return self.eval_move(board)
-		max_score = 0
-		min_score = 1
+		max_player = board.turn == self.player
+		best_score = None
 		for move in moves:
 			board.push(move)
 			score = self.score_move(board, depth-1)
 			board.pop()
-			if score > max_score:
-				max_score = score
-			if score < min_score:
-				min_score = score
-		if board.turn == self.player:
-			return max_score
-		return min_score
+			if not best_score:
+				best_score = score
+			elif max_player: #MAX
+				if score > best_score:
+					best_score = score
+					if best_score = 1:
+						#prune
+						return best_score
+			else: #MIN
+				if score < best_score:
+					best_score = score
+					if best_score = 0:
+						#prune
+						return best_score
+		return best_score
 
 	def eval_move(self, board):
 		moves = list(board.legal_moves)
@@ -41,7 +49,7 @@ class ChessBot:
 			if board.result() in ['1-0', '0-1']:
 				score = 1
 			else:
-				score = 0.3
+				score = 0.5
 		else:
 			#eval board by looking at next move
 			batch_x = np.zeros(shape=(len(moves), 8, 8, 12), dtype=np.int8)
@@ -50,7 +58,7 @@ class ChessBot:
 				batch_x[i] = self.board_to_matrix(board)
 				board.pop()
 			out = model.predict_proba(batch_x, verbose=0)
-			scores = [s[1] for s in out]
+			scores = [s[0] for s in out]
 			max_score = max(scores)
 			score = 1 - max_score
 		if not board.turn == self.player:
