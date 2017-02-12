@@ -1,5 +1,5 @@
 import chess
-from model_conv import model, WEIGHTS_FILE
+from model import model, WEIGHTS_FILE
 import numpy as np
 
 class ChessBot:
@@ -22,26 +22,24 @@ class ChessBot:
 			return self.eval_move(board)
 		max_player = board.turn == self.player
 		best_score = None
+		best_move = None
 		for move in moves:
 			board.push(move)
 			score = self.score_move(board, depth-1)
 			board.pop()
-			if not best_score:
+			if best_score == None:
 				best_score = score
+				best_move = move
 			elif max_player: #MAX
 				if score > best_score:
 					best_score = score
-					if best_score = 1:
-						#prune
-						return best_score
+					best_move = move
 			else: #MIN
 				if score < best_score:
 					best_score = score
-					if best_score = 0:
-						#prune
-						return best_score
+					best_move = move
 		return best_score
-
+ 
 	def eval_move(self, board):
 		moves = list(board.legal_moves)
 		score = 0
