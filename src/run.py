@@ -1,4 +1,4 @@
 from trainer import Trainer
 
 trainer = Trainer()
-trainer.train_from_pros()
+trainer.train_vs_sunfish()

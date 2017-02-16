@@ -16,7 +16,7 @@ class ChessBot:
 				best_move = move
 		return best_move
 
-	def score_move(self, board, alpha=0, beta=1, depth):
+	def score_move(self, board, depth, alpha=0, beta=1):
 		moves = list(board.legal_moves)
 		if depth == 0 or len(moves) == 0:
 			return self.eval_move(board)
@@ -25,7 +25,7 @@ class ChessBot:
 		best_move = None
 		for move in moves:
 			board.push(move)
-			score = self.score_move(board, alpha, beta, depth-1)
+			score = self.score_move(board, depth-1, alpha, beta)
 			board.pop()
 			if best_score == None:
 				best_score = score

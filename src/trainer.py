@@ -128,8 +128,8 @@ class Trainer:
 					if board.piece_at(move.from_square).piece_type == chess.PAWN:
 						move.promotion = chess.QUEEN
 			else:
-				#move = self.best_move(board, filter=True)
-				move = chessbot.best_move(board, depth=1)
+				move = self.best_move(board)
+				#move = chessbot.best_move(board, depth=1)
 
 			move_str = str(move)
 			sun_move = sunfish.parse(move_str[0:2]), sunfish.parse(move_str[2:4])
@@ -156,7 +156,7 @@ class Trainer:
 			won = True
 		if eval:
 			return board, won
-		self.train_from_match(board)
+		self.train_from_match(board, result)
 		return won
 
 	def test_winrate(self):
