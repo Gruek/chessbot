@@ -63,10 +63,6 @@ class ChessBot:
 					score = 0
 					board.pop()
 					break
-				elif result == '1/2-1/2':
-					score = 0.5
-					board.pop()
-					break
 				batch_x[i] = self.board_to_matrix(board)
 				board.pop()
 			if score == -1:
