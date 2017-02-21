@@ -1,7 +1,7 @@
 from keras.models import Sequential
 from keras.layers import Dense, Activation
 from keras.layers.core import Flatten, Dropout
-from keras.optimizers import SGD
+from keras.optimizers import Adam
 import os.path
 
 WEIGHTS_FILE = 'weights.h5'
@@ -21,7 +21,7 @@ model.add(Activation("relu"))
 model.add(Dense(output_dim=2))
 model.add(Activation("softmax"))
 
-model.compile(loss='categorical_crossentropy', optimizer=SGD(lr=0.01, momentum=0.1))
+model.compile(loss='categorical_crossentropy', optimizer=Adam())
 
 if os.path.isfile(WEIGHTS_FILE):
 	model.load_weights(WEIGHTS_FILE)
