@@ -102,7 +102,7 @@ class Trainer:
 		while True:
 			games = 0
 			wins = 0
-			for i in range(100):
+			for i in range(50):
 				win = self.play_vs_sunfish()
 				if win:
 					wins += 1
@@ -161,10 +161,12 @@ class Trainer:
 
 	def test_winrate(self):
 		wins = 0
-		for i in range(1):
+		games = 0
+		for i in range(10):
+			games += 1
 			board, won = self.play_vs_sunfish(eval=True)
 			wins += won
-		return wins/1
+		return wins/games
 
 	def train_from_pros(self):
 		files = ["ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn", "ficsgamesdb_2015_standard2000_nomovetimes_1441190.pgn", "ficsgamesdb_2014_standard2000_nomovetimes_1441191.pgn"]
