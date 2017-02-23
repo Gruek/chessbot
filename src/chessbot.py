@@ -3,13 +3,13 @@ from model import model, WEIGHTS_FILE
 import numpy as np
 
 class ChessBot:
-	def best_move(self, board, depth=1):
+	def best_move(self, board, depth=3):
 		self.player = board.turn
 		max_score = -1
 		best_move = None
 		for move in board.legal_moves:
 			board.push(move)
-			score = self.score_move(board, depth)
+			score = self.score_move(board, depth-1)
 			board.pop()
 			if score > max_score:
 				max_score = score
@@ -23,6 +23,10 @@ class ChessBot:
 		max_player = board.turn == self.player
 		best_score = None
 		best_move = None
+		#get top 5 moves
+		scores = self.score_moves(moves).sort(key = lambda x: x['score'], reverse=True)[:5]
+		moves = [score['move'] for score in scores]
+		#go deeper
 		for move in moves:
 			board.push(move)
 			score = self.score_move(board, depth-1, alpha, beta)
@@ -74,6 +78,25 @@ class ChessBot:
 			return score
 		else:
 			return 1-score
+
+	def score_moves(self, moves):
+		scores = []
+		for move in moves:
+			board.push(move)
+			if board.result() in ['1-0', '0-1']:
+				board.pop()
+				return [{'score': 1, 'move': move}]
+			board.pop()
+		if len(moves) > 0:
+			batch_x = np.zeros(shape=(len(moves), 8, 8, 12), dtype=np.int8)
+			for i, move in enumerate(moves):
+				board.push(move)
+				batch_x[i] = self.board_to_matrix(board)
+				board.pop()
+			out = model.predict_proba(batch_x, verbose=0)
+			for i, score in enumerate(out):
+				scores.append({'score': score[0], 'move': moves[i]})
+		return scores
 
 	def board_to_matrix(self, board):
 		pov = not board.turn
