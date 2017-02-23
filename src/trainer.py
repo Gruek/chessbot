@@ -128,8 +128,8 @@ class Trainer:
 					if board.piece_at(move.from_square).piece_type == chess.PAWN:
 						move.promotion = chess.QUEEN
 			else:
-				move = self.best_move(board)
-				#move = chessbot.best_move(board, depth=1)
+				#move = self.best_move(board)
+				move = chessbot.best_move(board)
 
 			move_str = str(move)
 			sun_move = sunfish.parse(move_str[0:2]), sunfish.parse(move_str[2:4])

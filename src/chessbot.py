@@ -24,8 +24,9 @@ class ChessBot:
 		best_score = None
 		best_move = None
 		#get top 5 moves
-		scores = self.score_moves(moves).sort(key = lambda x: x['score'], reverse=True)[:5]
-		moves = [score['move'] for score in scores]
+		scores = self.score_moves(moves, board)
+		scores.sort(key = lambda x: x['score'], reverse=True)
+		moves = [score['move'] for score in scores[:5]]
 		#go deeper
 		for move in moves:
 			board.push(move)
@@ -79,7 +80,7 @@ class ChessBot:
 		else:
 			return 1-score
 
-	def score_moves(self, moves):
+	def score_moves(self, moves, board):
 		scores = []
 		for move in moves:
 			board.push(move)
