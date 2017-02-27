@@ -3,9 +3,9 @@ from model import model, WEIGHTS_FILE
 import numpy as np
 
 class ChessBot:
-	def best_move(self, board, depth=3):
+	def best_move(self, board, depth=2):
 		self.player = board.turn
-		max_score = -1
+		max_score = -1000
 		best_move = None
 		for move in board.legal_moves:
 			board.push(move)
@@ -19,7 +19,13 @@ class ChessBot:
 	def score_move(self, board, depth, alpha=0, beta=1):
 		moves = list(board.legal_moves)
 		if depth == 0 or len(moves) == 0:
-			return self.eval_move(board)
+			score = self.eval_move(board)
+			#if perfect score then sort by depth
+			if score == 1:
+				score += depth
+			elif score == 0:
+				score -= depth
+			return score
 		max_player = board.turn == self.player
 		best_score = None
 		best_move = None
@@ -27,6 +33,7 @@ class ChessBot:
 		scores = self.score_moves(moves, board)
 		scores.sort(key = lambda x: x['score'], reverse=True)
 		moves = [score['move'] for score in scores[:5]]
+
 		#go deeper
 		for move in moves:
 			board.push(move)

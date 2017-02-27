@@ -162,7 +162,7 @@ class Trainer:
 	def test_winrate(self):
 		wins = 0
 		games = 0
-		for i in range(10):
+		for i in range(4):
 			games += 1
 			board, won = self.play_vs_sunfish(eval=True)
 			wins += won
