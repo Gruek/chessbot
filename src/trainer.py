@@ -169,15 +169,21 @@ class Trainer:
 		return wins/games
 
 	def train_from_pros(self):
-		files = ["ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn", "ficsgamesdb_2015_standard2000_nomovetimes_1441190.pgn", "ficsgamesdb_2014_standard2000_nomovetimes_1441191.pgn"]
+		files = [
+			"ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn",
+			"ficsgamesdb_2015_standard2000_nomovetimes_1441190.pgn",
+			"ficsgamesdb_2014_standard2000_nomovetimes_1441191.pgn"
+		]
 		games = 0
 		epoch = 0
+		file_idx = np.random.randint(len(files))
 		file = open(files[epoch])
 		while True:
 			game = chess.pgn.read_game(file)
 			if not game:
 				epoch += 1
-				file = open(files[epoch%len(files)])
+				file_idx += 1
+				file = open(files[file_idx%len(files)])
 				print('Win Rate:', self.test_winrate())
 				continue
 			board = game.end().board()
@@ -221,16 +227,20 @@ class Trainer:
 			#black
 			winner = chess.BLACK
 
-		moves_num = len(board.move_stack)
-		batch_x = np.zeros(shape=(moves_num, 8, 8, 12), dtype=np.int8)
-		batch_y = np.zeros(shape=(moves_num, 2), dtype=np.float)
+		moves = list(board.move_stack)
+		moves_num = len(moves)
+		while moves_num > 0:
+			batch_size = max(moves_num, 50)
+			moves_num -= batch_size
+			batch_x = np.zeros(shape=(batch_size, 8, 8, 12), dtype=np.int8)
+			batch_y = np.zeros(shape=(batch_size, 2), dtype=np.float)
 
-		for i in range(moves_num):
-			relative_adjust = 1 #0.5 + ((moves_num-i)/moves_num)/2
-			if winner == 2: #DRAW
-				relative_adjust = 0.5
-			last_turn = not board.turn
-			batch_x[i] = self.board_to_matrix(board)
-			batch_y[i] = [relative_adjust, 1-relative_adjust] if winner == last_turn else [1-relative_adjust, relative_adjust]
-			board.pop()
-		model.train_on_batch(batch_x, batch_y)
+			for i in range(batch_size):
+				score = 1 #0.5 + ((len(moves)-i)/len(moves))/2
+				if winner == 2: #DRAW
+					score = 0.5
+				last_turn = not board.turn
+				batch_x[i] = self.board_to_matrix(board)
+				batch_y[i] = [score, 1-score] if winner == last_turn else [1-score, score]
+				board.pop()
+			model.train_on_batch(batch_x, batch_y)
