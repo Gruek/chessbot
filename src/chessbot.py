@@ -3,7 +3,7 @@ from model import model, WEIGHTS_FILE
 import numpy as np
 
 class ChessBot:
-	def best_move(self, board, depth=2):
+	def best_move(self, board, depth=3):
 		self.player = board.turn
 		max_score = -1000
 		best_move = None
@@ -60,11 +60,11 @@ class ChessBot:
 	def eval_move(self, board):
 		moves = list(board.legal_moves)
 		score = -1
-		if len(moves) == 0:
-			if board.result() in ['1-0', '0-1']:
-				score = 1
-			else:
-				score = 0.5
+		result = board.result()
+		if result in ['1-0', '0-1']:
+			score = 1
+		elif result == '1/2-1/2':
+			score = 0.5
 		else:
 			#eval board by looking at next move
 			batch_x = np.zeros(shape=(len(moves), 8, 8, 12), dtype=np.int8)
@@ -78,7 +78,7 @@ class ChessBot:
 				batch_x[i] = self.board_to_matrix(board)
 				board.pop()
 			if score == -1:
-				out = model.predict_proba(batch_x, verbose=0)
+				out = model.predict(batch_x, verbose=0)
 				scores = [s[0] for s in out]
 				max_score = max(scores)
 				score = 1 - max_score
@@ -101,7 +101,7 @@ class ChessBot:
 				board.push(move)
 				batch_x[i] = self.board_to_matrix(board)
 				board.pop()
-			out = model.predict_proba(batch_x, verbose=0)
+			out = model.predict(batch_x, verbose=0)
 			for i, score in enumerate(out):
 				scores.append({'score': score[0], 'move': moves[i]})
 		return scores

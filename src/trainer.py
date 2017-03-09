@@ -35,7 +35,7 @@ class Trainer:
 				draws += draw
 				total_moves += moves
 				games += 1
-			model.save_weights(WEIGHTS_FILE)
+			model.save_weights(WEIGHTS_FILE, overwrite=True)
 			print('Draw rate:', draws / games, 'Avg moves:', total_moves / games)
 			if iterations%20==0:
 				print('Win Rate:', self.test_winrate())
@@ -67,7 +67,7 @@ class Trainer:
 			board.pop()
 			moves.append(move)
 
-		out = model.predict_proba(batch_x, verbose=0)
+		out = model.predict(batch_x, verbose=0)
 
 		best_score = 0
 		best_move = None
@@ -108,7 +108,8 @@ class Trainer:
 					wins += 1
 				games += 1
 			print('Win rate:', wins/games)
-			model.save_weights(WEIGHTS_FILE)
+			model.save_weights(WEIGHTS_FILE, overwrite=True)
+			print(self.validation())
 
 	def play_vs_sunfish(self, eval=False):
 		board = chess.Board()
@@ -118,7 +119,7 @@ class Trainer:
 
 		while not board.is_game_over():
 			if board.turn == sun_color:
-				sun_move, score = sunfish_searcher.search(sunfish_board, 0.05)
+				sun_move, score = sunfish_searcher.search(sunfish_board, 0.01)
 				if board.turn == chess.BLACK:
 					move_str = sunfish.render(119-sun_move[0]) + sunfish.render(119 - sun_move[1])
 				else:
@@ -128,8 +129,8 @@ class Trainer:
 					if board.piece_at(move.from_square).piece_type == chess.PAWN:
 						move.promotion = chess.QUEEN
 			else:
-				#move = self.best_move(board)
-				move = chessbot.best_move(board)
+				move = self.best_move(board)
+				#move = chessbot.best_move(board)
 
 			move_str = str(move)
 			sun_move = sunfish.parse(move_str[0:2]), sunfish.parse(move_str[2:4])
@@ -170,50 +171,66 @@ class Trainer:
 
 	def train_from_pros(self):
 		files = [
-			"ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn",
-			"ficsgamesdb_2015_standard2000_nomovetimes_1441190.pgn",
-			"ficsgamesdb_2014_standard2000_nomovetimes_1441191.pgn"
+			# "ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn",
+			# "ficsgamesdb_2015_standard2000_nomovetimes_1441190.pgn",
+			# "ficsgamesdb_2014_standard2000_nomovetimes_1441191.pgn",
+			"ficsgamesdb_2016_chess_nomovetimes_1445486.pgn"
 		]
 		games = 0
 		epoch = 0
 		file_idx = np.random.randint(len(files))
-		file = open(files[epoch])
-		while True:
+		file = open(files[file_idx])
+		for i in range(0):
 			game = chess.pgn.read_game(file)
-			if not game:
-				epoch += 1
-				file_idx += 1
-				file = open(files[file_idx%len(files)])
-				print('Win Rate:', self.test_winrate())
-				continue
-			board = game.end().board()
-			if len(board.move_stack) < 2:
-				continue
-
-			batch_x = np.zeros(shape=(len(board.move_stack)*2, 8, 8, 12), dtype=np.int8)
-			batch_y = np.zeros(shape=(len(board.move_stack)*2, 2), dtype=np.float)
-
-			#if board.result() not in ['1-0', '0-1']:
-			#	continue
-
-			for i in range(len(board.move_stack)):
-				# pro moves == good
-				batch_x[2*i] = self.board_to_matrix(board)
-				batch_y[2*i] = [1, 0]
-				board.pop()
-				# random move == bad
-				possible_moves = list(board.legal_moves)
-				random_move = possible_moves[np.random.randint(len(possible_moves))]
-				board.push(random_move)
-				batch_x[2*i+1] = self.board_to_matrix(board)
-				batch_y[2*i+1] = [0, 1]
-				board.pop()
-			model.train_on_batch(batch_x, batch_y)
 			games += 1
 
-			if games % 1000 == 0:
-				model.save_weights(WEIGHTS_FILE)
+		while True:
+			try:
+				game = chess.pgn.read_game(file)
+				if not game:
+					epoch += 1
+					file_idx += 1
+					file = open(files[file_idx%len(files)])
+					print('Win Rate:', self.test_winrate())
+					continue
+				board = game.end().board()
+				if len(board.move_stack) < 2:
+					continue
+			except:
+				continue
+
+			if not game.headers["Result"] in ['1-0', '0-1']:
+				continue
+
+			self.train_from_match(board, game.headers["Result"])
+
+			# moves_num = len(board.move_stack)
+			# while moves_num > 0:
+			# 	batch_size = min([moves_num, 25])
+			# 	moves_num -= batch_size
+
+			# 	batch_x = np.zeros(shape=(batch_size*2, 8, 8, 12), dtype=np.int8)
+			# 	batch_y = np.zeros(shape=(batch_size*2, 2), dtype=np.float)
+
+			# 	for i in range(batch_size):
+			# 		# pro moves == good
+			# 		batch_x[2*i] = self.board_to_matrix(board)
+			# 		batch_y[2*i] = [1, 0]
+			# 		board.pop()
+			# 		# random move == bad
+			# 		possible_moves = list(board.legal_moves)
+			# 		random_move = possible_moves[np.random.randint(len(possible_moves))]
+			# 		board.push(random_move)
+			# 		batch_x[2*i+1] = self.board_to_matrix(board)
+			# 		batch_y[2*i+1] = [0, 1]
+			# 		board.pop()
+			# 	model.train_on_batch(batch_x, batch_y)
+
+			if games % 5000 == 0:
+				model.save_weights(WEIGHTS_FILE, overwrite=True)
 				print('Games:', games, 'Epoch:', epoch)
+				print(self.validation())
+			games += 1
 
 	def train_from_match(self, board, result=None):
 		if not result:
@@ -230,7 +247,7 @@ class Trainer:
 		moves = list(board.move_stack)
 		moves_num = len(moves)
 		while moves_num > 0:
-			batch_size = max(moves_num, 50)
+			batch_size = min([moves_num, 50])
 			moves_num -= batch_size
 			batch_x = np.zeros(shape=(batch_size, 8, 8, 12), dtype=np.int8)
 			batch_y = np.zeros(shape=(batch_size, 2), dtype=np.float)
@@ -244,3 +261,48 @@ class Trainer:
 				batch_y[i] = [score, 1-score] if winner == last_turn else [1-score, score]
 				board.pop()
 			model.train_on_batch(batch_x, batch_y)
+
+	def validation(self):
+		file = "ficsgamesdb_201501_standard_nomovetimes_1447456.pgn"
+		file = open(file)
+		sample = 0
+		correct = 0
+		max_sample = 1000
+
+		while True:
+			if sample > max_sample:
+				return correct/sample
+			try:
+				game = chess.pgn.read_game(file)
+				if not game:
+					return correct/sample
+				board = game.end().board()
+				if len(board.move_stack) <= 2:
+					continue
+			except:
+				continue
+
+			result = game.headers["Result"]
+			if not result in ['1-0', '0-1']:
+				continue
+
+			#eval the second half of the game
+			moves_num = len(board.move_stack)//2
+			moves_num = min([1, moves_num])
+
+			batch_x = np.zeros(shape=(moves_num, 8, 8, 12), dtype=np.int8)
+			move_turn = not board.turn
+
+			for i in range(moves_num):
+				batch_x[i] = self.board_to_matrix(board)
+				board.pop()
+			out = model.predict(batch_x, verbose=0)
+			winner = result == '1-0'
+			for score in out:
+				if winner == move_turn and score[0] > 0.5:
+					correct += 1
+				if winner != move_turn and score[0] < 0.5:
+					correct += 1
+				sample += 1
+				move_turn = not move_turn
+
