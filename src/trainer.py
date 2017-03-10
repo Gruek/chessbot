@@ -180,7 +180,7 @@ class Trainer:
 		epoch = 0
 		file_idx = np.random.randint(len(files))
 		file = open(files[file_idx])
-		for i in range(0):
+		for i in range(945000):
 			game = chess.pgn.read_game(file)
 			games += 1
 
@@ -226,11 +226,11 @@ class Trainer:
 			# 		board.pop()
 			# 	model.train_on_batch(batch_x, batch_y)
 
+			games += 1
 			if games % 5000 == 0:
 				model.save_weights(WEIGHTS_FILE, overwrite=True)
 				print('Games:', games, 'Epoch:', epoch)
 				print(self.validation())
-			games += 1
 
 	def train_from_match(self, board, result=None):
 		if not result:
@@ -288,7 +288,7 @@ class Trainer:
 
 			#eval the second half of the game
 			moves_num = len(board.move_stack)//2
-			moves_num = min([1, moves_num])
+			moves_num = min([10, moves_num])
 
 			batch_x = np.zeros(shape=(moves_num, 8, 8, 12), dtype=np.int8)
 			move_turn = not board.turn

@@ -10,6 +10,8 @@ class ChessBot:
 		for move in board.legal_moves:
 			board.push(move)
 			score = self.score_move(board, depth-1)
+			if score > 0.5 and board.can_claim_threefold_repetition():
+				score = 0.5
 			board.pop()
 			if score > max_score:
 				max_score = score
