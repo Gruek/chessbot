@@ -13,8 +13,8 @@ class Trainer:
 
 		# simulate a game vs self
 		while not board.is_game_over():
-			move = self.best_move(board, filter=True)
-			#move = chessbot.best_move(board, depth=1)
+			#move = self.best_move(board, filter=True)
+			move = chessbot.best_move(board)
 			board.push(move)
 
 		draw = board.result() == '1/2-1/2'
@@ -30,15 +30,16 @@ class Trainer:
 			games = 0
 			draws = 0
 			total_moves = 0
-			for i in range(50):
+			for i in range(10):
 				draw, moves = self.play_vs_self()
 				draws += draw
 				total_moves += moves
 				games += 1
 			model.save_weights(WEIGHTS_FILE, overwrite=True)
 			print('Draw rate:', draws / games, 'Avg moves:', total_moves / games)
-			if iterations%20==0:
-				print('Win Rate:', self.test_winrate())
+			print(self.validation())
+			#if iterations%20==0:
+				#print('Win Rate:', self.test_winrate())
 
 	def best_move(self, board, eval=False, filter=False):
 		# filter out shit moves
@@ -102,7 +103,7 @@ class Trainer:
 		while True:
 			games = 0
 			wins = 0
-			for i in range(50):
+			for i in range(10):
 				win = self.play_vs_sunfish()
 				if win:
 					wins += 1
@@ -119,7 +120,7 @@ class Trainer:
 
 		while not board.is_game_over():
 			if board.turn == sun_color:
-				sun_move, score = sunfish_searcher.search(sunfish_board, 0.01)
+				sun_move, score = sunfish_searcher.search(sunfish_board, 0.4)
 				if board.turn == chess.BLACK:
 					move_str = sunfish.render(119-sun_move[0]) + sunfish.render(119 - sun_move[1])
 				else:
@@ -129,8 +130,8 @@ class Trainer:
 					if board.piece_at(move.from_square).piece_type == chess.PAWN:
 						move.promotion = chess.QUEEN
 			else:
-				move = self.best_move(board)
-				#move = chessbot.best_move(board)
+				#move = self.best_move(board)
+				move = chessbot.best_move(board)
 
 			move_str = str(move)
 			sun_move = sunfish.parse(move_str[0:2]), sunfish.parse(move_str[2:4])
@@ -157,6 +158,7 @@ class Trainer:
 			won = True
 		if eval:
 			return board, won
+		print(len(board.move_stack), won)
 		self.train_from_match(board, result)
 		return won
 
@@ -288,7 +290,7 @@ class Trainer:
 
 			#eval the second half of the game
 			moves_num = len(board.move_stack)//2
-			moves_num = min([10, moves_num])
+			moves_num = min([5, moves_num])
 
 			batch_x = np.zeros(shape=(moves_num, 8, 8, 12), dtype=np.int8)
 			move_turn = not board.turn
@@ -306,3 +308,94 @@ class Trainer:
 				sample += 1
 				move_turn = not move_turn
 
+	def get_match_from_data(self, dataset):
+		game = chess.pgn.read_game(dataset['file'])
+		if not game:
+			dataset['file_index'] += 1
+			dataset['file_index'] %= len(dataset['files'])
+			dataset['file'] = open(dataset['files'][dataset['file_index']])
+			return self.get_match_from_data(dataset)
+		return game
+
+	def train_from_data(self):
+		pro_data = {
+			'files': [
+				"ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn",
+				"ficsgamesdb_2015_standard2000_nomovetimes_1441190.pgn",
+				"ficsgamesdb_2014_standard2000_nomovetimes_1441191.pgn",
+			],
+			'file_index': 0,
+			'file': None
+		}
+		standard_data = {
+			'files': ["ficsgamesdb_2016_chess_nomovetimes_1445486.pgn"],
+			'file_index': 0,
+			'file': None
+		}
+		pro_data['file_index'] = np.random.randint(len(pro_data['files']))
+		pro_data['file'] = open(pro_data['files'][pro_data['file_index']])
+		standard_data['file_index'] = np.random.randint(len(standard_data['files']))
+		standard_data['file'] = open(standard_data['files'][standard_data['file_index']])
+
+		games = 0
+		pro_game = True
+		skips = 440000
+
+		while True:
+			try:
+				if pro_game:
+					game = self.get_match_from_data(pro_data)
+				else:
+					game = self.get_match_from_data(standard_data)
+				board = game.end().board()
+				if len(board.move_stack) < 2:
+					continue
+			except:
+				continue
+			
+			result = game.headers["Result"]
+			if not result in ['1-0', '0-1']:
+				continue
+			if skips > 0:
+				games += 1
+				skips -= 1
+				continue
+
+			if not pro_game:
+				self.train_from_match(board, result)
+			else:
+				winner = 2
+				if result == '1-0':
+					winner = 1
+				elif result == '0-1':
+					winner = 0
+				moves_num = len(board.move_stack)
+				while moves_num > 0:
+					batch_size = min([moves_num, 25])
+					moves_num -= batch_size
+
+					batch_x = np.zeros(shape=(batch_size*2, 8, 8, 12), dtype=np.int8)
+					batch_y = np.zeros(shape=(batch_size*2, 2), dtype=np.float)
+
+					for i in range(batch_size):
+						last_move = not board.turn
+						pro_won = last_move == winner
+						# pro won == 1, pro lost == 0.5
+						batch_x[2*i] = self.board_to_matrix(board)
+						batch_y[2*i] = [1, 0] if pro_won else [0.5, 0.5]
+						board.pop()
+						# random move == bad
+						possible_moves = list(board.legal_moves)
+						random_move = possible_moves[np.random.randint(len(possible_moves))]
+						board.push(random_move)
+						batch_x[2*i+1] = self.board_to_matrix(board)
+						batch_y[2*i+1] = [0.5, 0.5] if pro_won else [0, 1]
+						board.pop()
+					model.train_on_batch(batch_x, batch_y)
+
+			games += 1
+			pro_game = not pro_game
+			if games % 5000 == 0:
+				model.save_weights(WEIGHTS_FILE, overwrite=True)
+				print('Games:', games)
+				print(self.validation())

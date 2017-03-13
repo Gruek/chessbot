@@ -10,10 +10,10 @@ import keras.backend.tensorflow_backend as KTF
 WEIGHTS_FILE = 'weights.h5'
 
 #enable JIT
-config = tf.ConfigProto()
-config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
-session = tf.Session(config=config)
-KTF.set_session(session)
+# config = tf.ConfigProto()
+# config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+# session = tf.Session(config=config)
+# KTF.set_session(session)
 
 model = Sequential()
 

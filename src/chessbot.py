@@ -3,20 +3,12 @@ from model import model, WEIGHTS_FILE
 import numpy as np
 
 class ChessBot:
-	def best_move(self, board, depth=3):
+	def best_move(self, board, depth=5, eval=False):
 		self.player = board.turn
-		max_score = -1000
-		best_move = None
-		for move in board.legal_moves:
-			board.push(move)
-			score = self.score_move(board, depth-1)
-			if score > 0.5 and board.can_claim_threefold_repetition():
-				score = 0.5
-			board.pop()
-			if score > max_score:
-				max_score = score
-				best_move = move
-		return best_move
+		score, move = self.score_move(board, depth)
+		if eval:
+			print(score)
+		return move
 
 	def score_move(self, board, depth, alpha=0, beta=1):
 		moves = list(board.legal_moves)
@@ -27,7 +19,7 @@ class ChessBot:
 				score += depth
 			elif score == 0:
 				score -= depth
-			return score
+			return score, None
 		max_player = board.turn == self.player
 		best_score = None
 		best_move = None
@@ -39,7 +31,7 @@ class ChessBot:
 		#go deeper
 		for move in moves:
 			board.push(move)
-			score = self.score_move(board, depth-1, alpha, beta)
+			score, bm = self.score_move(board, depth-1, alpha, beta)
 			board.pop()
 			if best_score == None:
 				best_score = score
@@ -57,7 +49,7 @@ class ChessBot:
 			if beta <= alpha:
 				#prune
 				break
-		return best_score
+		return best_score, best_move
  
 	def eval_move(self, board):
 		moves = list(board.legal_moves)
@@ -84,6 +76,8 @@ class ChessBot:
 				scores = [s[0] for s in out]
 				max_score = max(scores)
 				score = 1 - max_score
+			if score > 0.5 and board.can_claim_threefold_repetition():
+				score = 0.5
 		if not board.turn == self.player:
 			return score
 		else:
