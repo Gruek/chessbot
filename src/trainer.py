@@ -158,7 +158,6 @@ class Trainer:
 			won = True
 		if eval:
 			return board, won
-		print(len(board.move_stack), won)
 		self.train_from_match(board, result)
 		return won
 
