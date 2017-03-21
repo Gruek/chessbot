@@ -7,7 +7,7 @@ class ChessBot:
 		self.max_cache = 2
 		self.cache = [{}] * self.max_cache
 
-	def best_move(self, board, depth=4, eval=False):
+	def best_move(self, board, depth=5, eval=False):
 		#clean old cache
 		self.cache.insert(0, {})
 		self.cache = self.cache[:self.max_cache]
@@ -18,7 +18,7 @@ class ChessBot:
 			print(score)
 		return move
 
-	def score_move(self, board, depth, alpha=0, beta=1, max_breadth=10):
+	def score_move(self, board, depth, alpha=0, beta=1, max_breadth=5):
 		moves = list(board.legal_moves)
 		if depth == 0 or len(moves) == 0:
 			score = self.eval_move(board)

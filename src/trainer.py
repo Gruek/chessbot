@@ -13,8 +13,8 @@ class Trainer:
 
 		# simulate a game vs self
 		while not board.is_game_over():
-			#move = self.best_move(board, filter=True)
-			move = chessbot.best_move(board)
+			# move = self.best_move(board, filter=True)
+			move = chessbot.best_move(board, depth=3)
 			board.push(move)
 
 		draw = board.result() == '1/2-1/2'
@@ -120,7 +120,7 @@ class Trainer:
 
 		while not board.is_game_over():
 			if board.turn == sun_color:
-				sun_move, score = sunfish_searcher.search(sunfish_board, 0.4)
+				sun_move, score = sunfish_searcher.search(sunfish_board, 10)
 				if board.turn == chess.BLACK:
 					move_str = sunfish.render(119-sun_move[0]) + sunfish.render(119 - sun_move[1])
 				else:
@@ -130,8 +130,8 @@ class Trainer:
 					if board.piece_at(move.from_square).piece_type == chess.PAWN:
 						move.promotion = chess.QUEEN
 			else:
-				#move = self.best_move(board)
-				move = chessbot.best_move(board)
+				move = self.best_move(board)
+				# move = chessbot.best_move(board)
 
 			move_str = str(move)
 			sun_move = sunfish.parse(move_str[0:2]), sunfish.parse(move_str[2:4])
