@@ -4,6 +4,7 @@ from model import model, WEIGHTS_FILE
 import numpy as np
 from sunfish import sunfish
 from chessbot import ChessBot
+from pystockfish import Engine
 
 chessbot = ChessBot()
 
@@ -99,12 +100,12 @@ class Trainer:
 					state[x][y][piece_idx] = 1
 		return state
 
-	def train_vs_sunfish(self):
+	def train_vs_stockfish(self):
 		while True:
 			games = 0
 			wins = 0
-			for i in range(10):
-				win = self.play_vs_sunfish()
+			for i in range(5):
+				win = self.play_vs_stockfish()
 				if win:
 					wins += 1
 				games += 1
@@ -120,7 +121,7 @@ class Trainer:
 
 		while not board.is_game_over():
 			if board.turn == sun_color:
-				sun_move, score = sunfish_searcher.search(sunfish_board, 10)
+				sun_move, score = sunfish_searcher.search(sunfish_board, 5)
 				if board.turn == chess.BLACK:
 					move_str = sunfish.render(119-sun_move[0]) + sunfish.render(119 - sun_move[1])
 				else:
@@ -156,6 +157,40 @@ class Trainer:
 		won = False
 		if winner < 2 and winner != sun_color:
 			won = True
+		print(result, won, len(board.move_stack))
+		if eval:
+			return board, won
+		self.train_from_match(board, result)
+		return won
+
+	def play_vs_stockfish(self, eval=False):
+		board = chess.Board()
+		stockfish = Engine(depth=20, param={"Threads": 6})
+		stockfish_color = np.random.randint(2)
+
+		while not board.is_game_over():
+			if board.turn == stockfish_color:
+				stockfish.setfenposition(board.fen())
+				move_str = stockfish.bestmove()['move']
+			else:
+				move_str = str(self.best_move(board))
+
+			move = chess.Move.from_uci(move_str)
+			board.push(move)
+
+		result = board.result()
+		# draw
+		winner = 2
+		if result == '1-0':
+			#white
+			winner = chess.WHITE
+		elif result == '0-1':
+			#black
+			winner = chess.BLACK
+		won = False
+		if winner < 2 and winner != stockfish_color:
+			won = True
+		print(result, won, len(board.move_stack))
 		if eval:
 			return board, won
 		self.train_from_match(board, result)
