@@ -31,7 +31,7 @@ class ChessBot:
 		max_player = board.turn == self.player
 		best_score = None
 		best_move = None
-		#get top 5 moves
+		#get top max_breadth moves
 		scores = self.score_moves(moves, board)
 		scores.sort(key = lambda x: x['score'], reverse=True)
 		moves = [score['move'] for score in scores[:max_breadth]]
