@@ -7,6 +7,8 @@ from chessbot import ChessBot
 from pystockfish import Engine
 
 chessbot = ChessBot()
+stockfish = Engine(depth=20, param={"Threads": 6, "Hash": 12288})
+shitfish = Engine(depth=1, param={"Threads": 6, "Hash": 12288})
 
 class Trainer:
 	def play_vs_self(self):
@@ -104,7 +106,7 @@ class Trainer:
 		while True:
 			games = 0
 			wins = 0
-			for i in range(5):
+			for i in range(20):
 				win = self.play_vs_stockfish()
 				if win:
 					wins += 1
@@ -163,17 +165,28 @@ class Trainer:
 		self.train_from_match(board, result)
 		return won
 
-	def play_vs_stockfish(self, eval=False):
+	def play_vs_stockfish(self, eval=False, shit=False, use_chessbot=False):
 		board = chess.Board()
-		stockfish = Engine(depth=20, param={"Threads": 6})
+		if not shit:
+			stockfish.newgame()
+		else:
+			shitfish.newgame()
 		stockfish_color = np.random.randint(2)
 
 		while not board.is_game_over():
 			if board.turn == stockfish_color:
-				stockfish.setfenposition(board.fen())
-				move_str = stockfish.bestmove()['move']
+				if not shit:
+					stockfish.setfenposition(board.fen())
+					move_str = stockfish.bestmove()['move']
+				else:
+					shitfish.setfenposition(board.fen())
+					move_str = shitfish.bestmove()['move']
 			else:
-				move_str = str(self.best_move(board))
+				if use_chessbot:
+					move = chessbot.best_move(board)
+				else:
+					move = self.best_move(board)
+				move_str = str(move)
 
 			move = chess.Move.from_uci(move_str)
 			board.push(move)
@@ -190,7 +203,7 @@ class Trainer:
 		won = False
 		if winner < 2 and winner != stockfish_color:
 			won = True
-		print(result, won, len(board.move_stack))
+		# print(result, won, len(board.move_stack))
 		if eval:
 			return board, won
 		self.train_from_match(board, result)
@@ -201,7 +214,7 @@ class Trainer:
 		games = 0
 		for i in range(4):
 			games += 1
-			board, won = self.play_vs_sunfish(eval=True)
+			board, won = self.play_vs_stockfish(True, True, True)
 			wins += won
 		return wins/games
 
