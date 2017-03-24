@@ -312,7 +312,7 @@ class Trainer:
 			model.train_on_batch(batch_x, batch_y)
 
 	def validation(self):
-		file = "ficsgamesdb_201501_standard_nomovetimes_1447456.pgn"
+		file = "ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn"
 		file = open(file)
 		sample = 0
 		correct = 0
@@ -337,7 +337,7 @@ class Trainer:
 
 			#eval the second half of the game
 			moves_num = len(board.move_stack)//2
-			moves_num = min([5, moves_num])
+			moves_num = min([10, moves_num])
 
 			batch_x = np.zeros(shape=(moves_num, 8, 8, 12), dtype=np.int8)
 			move_turn = not board.turn
