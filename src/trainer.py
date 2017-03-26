@@ -1,10 +1,10 @@
 import chess
 import chess.pgn
-from model import model, WEIGHTS_FILE
 import numpy as np
 from sunfish import sunfish
-from chessbot import ChessBot
+from chessbot import ChessBot, model, WEIGHTS_FILE
 from pystockfish import Engine
+from datetime import datetime
 
 chessbot = ChessBot()
 stockfish = Engine(depth=20, param={"Threads": 6, "Hash": 12288})
@@ -44,63 +44,9 @@ class Trainer:
             #if iterations%20==0:
                 #print('Win Rate:', self.test_winrate())
 
-    def best_move(self, board, eval=False, filter=False):
+    def best_move(self, board, eval=False):
         # filter out shit moves
-        decent_moves = []
-        if filter:
-            for move in board.legal_moves:
-                board.push(move)
-                if board.result() in ['1-0', '0-1']:
-                    board.pop()
-                    return move
-                if not board.can_claim_threefold_repetition():
-                    decent_moves.append(move)
-                board.pop()
-            if len(decent_moves) == 0:
-                decent_moves = board.legal_moves
-        else:
-            decent_moves = board.legal_moves
-
-        #format all the moves into 4d array
-        batch_x = np.zeros(shape=(len(decent_moves), 8, 8, 12), dtype=np.int8)
-        moves = []
-        for i, move in enumerate(decent_moves):
-            board.push(move)
-            state = self.board_to_matrix(board)
-            batch_x[i] = state
-            board.pop()
-            moves.append(move)
-
-        out = model.predict(batch_x, verbose=0)
-
-        best_score = 0
-        best_move = None
-        #return best move
-        for i, score in enumerate(out):
-            if score[0] > best_score:
-                best_score = score[0]
-                best_move = moves[i]
-            if eval:
-                print(moves[i], score[0])
-        return best_move
-
-    def board_to_matrix(self, board, pov=None):
-        if not pov:
-            #assume move has been made
-            pov = not board.turn
-        state = np.zeros(shape=(8, 8, 12), dtype=np.int8)
-        for x in range(8):
-            for y in range(8):
-                piece = board.piece_at(x*8+y)
-                if piece:
-                    enemy = piece.color != pov
-                    piece_idx = enemy * 6 + piece.piece_type - 1
-                    #rotate the board for black
-                    if pov == chess.BLACK:
-                        y = 7-y
-                        x = 7-x
-                    state[x][y][piece_idx] = 1
-        return state
+        return chessbot.best_move(board, 1, eval)
 
     def train_vs_stockfish(self):
         while True:
@@ -227,6 +173,7 @@ class Trainer:
             games += 1
 
         while True:
+            t1 = datetime.now()
             try:
                 game = chess.pgn.read_game(file)
                 if not game:
@@ -273,6 +220,9 @@ class Trainer:
                 model.save_weights(WEIGHTS_FILE, overwrite=True)
                 print('Games:', games, 'Epoch:', epoch)
                 print(self.validation())
+                t2 = datetime.now()
+                print(t2- t1)
+                t1 = t2
 
     def train_from_match(self, board, result=None):
         if not result:
@@ -291,17 +241,18 @@ class Trainer:
         while moves_num > 0:
             batch_size = min([moves_num, 50])
             moves_num -= batch_size
-            batch_x = np.zeros(shape=(batch_size, 8, 8, 12), dtype=np.int8)
+            batch_x = np.zeros(shape=(batch_size, 2, 8, 8, 12), dtype=np.int8)
             batch_y = np.zeros(shape=(batch_size, 2), dtype=np.float)
 
             for i in range(batch_size):
                 score = 1 #0.5 + ((len(moves)-i)/len(moves))/2
                 if winner == 2: #DRAW
                     score = 0.5
-                last_turn = not board.turn
-                batch_x[i] = self.board_to_matrix(board)
-                batch_y[i] = [score, 1-score] if winner == last_turn else [1-score, score]
+                pov = not board.turn
+                batch_x[i][1] = chessbot.board_to_matrix(board, pov)
                 board.pop()
+                batch_x[i][0] = chessbot.board_to_matrix(board, pov)
+                batch_y[i] = [score, 1-score] if winner == pov else [1-score, score]
             model.train_on_batch(batch_x, batch_y)
 
     def validation(self):
@@ -332,12 +283,14 @@ class Trainer:
             moves_num = len(board.move_stack)//2
             moves_num = min([5, moves_num])
 
-            batch_x = np.zeros(shape=(moves_num, 8, 8, 12), dtype=np.int8)
+            batch_x = np.zeros(shape=(moves_num, 2, 8, 8, 12), dtype=np.int8)
             move_turn = not board.turn
 
             for i in range(moves_num):
-                batch_x[i] = self.board_to_matrix(board)
+                pov = not board.turn
+                batch_x[i][1] = chessbot.board_to_matrix(board, pov)
                 board.pop()
+                batch_x[i][0] = chessbot.board_to_matrix(board, pov)
             out = model.predict(batch_x, verbose=0)
             winner = result == '1-0'
             for score in out:
@@ -379,9 +332,10 @@ class Trainer:
 
         games = 0
         pro_game = True
-        skips = 440000
+        skips = 305000
 
         while True:
+            t1 = datetime.now()
             try:
                 if pro_game:
                     game = self.get_match_from_data(pro_data)
@@ -414,22 +368,23 @@ class Trainer:
                     batch_size = min([moves_num, 25])
                     moves_num -= batch_size
 
-                    batch_x = np.zeros(shape=(batch_size*2, 8, 8, 12), dtype=np.int8)
+                    batch_x = np.zeros(shape=(batch_size*2, 2, 8, 8, 12), dtype=np.int8)
                     batch_y = np.zeros(shape=(batch_size*2, 2), dtype=np.float)
 
                     for i in range(batch_size):
-                        last_move = not board.turn
-                        pro_won = last_move == winner
-                        # pro won == 1, pro lost == 0.5
-                        batch_x[2*i] = self.board_to_matrix(board)
-                        batch_y[2*i] = [1, 0] if pro_won else [0.5, 0.5]
+                        pov = not board.turn
+                        # pro move == good
+                        batch_x[2*i][1] = chessbot.board_to_matrix(board, pov)
                         board.pop()
+                        batch_x[2*i][0] = chessbot.board_to_matrix(board, pov)
+                        batch_y[2*i] = [1, 0]
                         # random move == bad
                         possible_moves = list(board.legal_moves)
                         random_move = possible_moves[np.random.randint(len(possible_moves))]
+                        batch_x[2*i+1][0] = batch_x[2*i][0]
                         board.push(random_move)
-                        batch_x[2*i+1] = self.board_to_matrix(board)
-                        batch_y[2*i+1] = [0.5, 0.5] if pro_won else [0, 1]
+                        batch_x[2*i+1][1] = chessbot.board_to_matrix(board, pov)
+                        batch_y[2*i+1] = [0, 1]
                         board.pop()
                     model.train_on_batch(batch_x, batch_y)
 
@@ -439,3 +394,6 @@ class Trainer:
                 model.save_weights(WEIGHTS_FILE, overwrite=True)
                 print('Games:', games)
                 print(self.validation())
+                t2 = datetime.now()
+                print(t2- t1)
+                t1 = t2
