@@ -332,7 +332,7 @@ class Trainer:
 
         games = 0
         pro_game = True
-        skips = 305000
+        skips = 0
 
         while True:
             t1 = datetime.now()
