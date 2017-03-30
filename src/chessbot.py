@@ -2,6 +2,9 @@ import chess
 from model_twostate import model, WEIGHTS_FILE
 import numpy as np
 
+def softmax(x):
+    return np.exp(x) / np.sum(np.exp(x), axis=0)
+
 class ChessBot:
     def __init__(self):
         self.max_cache = 2
@@ -18,7 +21,7 @@ class ChessBot:
             print(score)
         return move
 
-    def score_move(self, board, depth, alpha=0, beta=1, max_breadth=20):
+    def score_move(self, board, depth, alpha=0, beta=1, breadth_range=0.4):
         moves = list(board.legal_moves)
         if depth == 0 or len(moves) == 0:
             score = self.eval_move(board)
@@ -32,9 +35,17 @@ class ChessBot:
         best_score = None
         best_move = None
         #get top max_breadth moves
-        scores = self.score_moves(moves, board)
-        scores.sort(key=lambda x: x['score'], reverse=True)
-        moves = [score['move'] for score in scores[:max_breadth]]
+        move_scores = self.score_moves(moves, board)
+        move_scores.sort(key=lambda x: x['score'], reverse=True)
+        scores = [score['score'] for score in move_scores]
+        softmaxed_scores = softmax(scores)
+        breadth = 0
+        moves = []
+        for i, move in enumerate(move_scores):
+            if breadth > breadth_range:
+                break
+            breadth += softmaxed_scores[i]
+            moves.append(move['move'])
 
         #go deeper
         for move in moves:
