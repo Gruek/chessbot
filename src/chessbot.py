@@ -7,7 +7,10 @@ def softmax(x):
 
 class ChessBot:
     def __init__(self):
-        self.max_cache = 2
+        self.max_cache = 50
+        self.cache = [{}] * self.max_cache
+
+    def clear_cache(self):
         self.cache = [{}] * self.max_cache
 
     def best_move(self, board, depth=4, eval=False):
@@ -21,16 +24,16 @@ class ChessBot:
             print(score)
         return move
 
-    def score_move(self, board, depth, alpha=0, beta=1, breadth_range=0.4):
+    def score_move(self, board, depth, alpha=0, beta=1, breadth_range=0.8):
         moves = list(board.legal_moves)
         if depth == 0 or len(moves) == 0:
-            score = self.eval_move(board)
+            score, move = self.eval_move(board)
             #if perfect score then sort by depth
             if score == 1:
                 score += depth
             elif score == 0:
                 score -= depth
-            return score, None
+            return score, move
         max_player = board.turn == self.player
         best_score = None
         best_move = None
@@ -73,6 +76,7 @@ class ChessBot:
     def eval_move(self, board):
         moves = list(board.legal_moves)
         score = -1
+        move = None
         result = board.result()
         if result in ['1-0', '0-1']:
             score = 1
@@ -86,16 +90,19 @@ class ChessBot:
             else:
                 #eval board by looking at next move
                 scores = self.score_moves(moves, board)
-                scores = [move['score'] for move in scores]
-                score = 1 - max(scores)
+                for move_score in scores:
+                    if move_score['score'] > score:
+                        score = move_score['score']
+                        move = move_score['move']
+                score = 1 - score
                 if score > 0.5 and board.can_claim_threefold_repetition():
                     score = 0.5
                 #cache score
                 self.cache[0][board_hash] = score
         if not board.turn == self.player:
-            return score
+            return score, move
         else:
-            return 1-score
+            return 1-score, move
 
     def score_moves(self, moves, board):
         scores = []

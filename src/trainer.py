@@ -8,7 +8,7 @@ from datetime import datetime
 
 chessbot = ChessBot()
 stockfish = Engine(depth=20, param={"Threads": 6, "Hash": 12288})
-shitfish = Engine(depth=1, param={"Threads": 6, "Hash": 12288})
+shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 12288})
 
 class Trainer:
     def play_vs_self(self):
@@ -45,21 +45,19 @@ class Trainer:
                 #print('Win Rate:', self.test_winrate())
 
     def best_move(self, board, eval=False):
-        # filter out shit moves
-        return chessbot.best_move(board, 1, eval)
+        return chessbot.best_move(board, 0, eval)
 
     def train_vs_stockfish(self):
         while True:
             games = 0
             wins = 0
-            for i in range(20):
-                win = self.play_vs_stockfish()
+            for i in range(60):
+                win = self.play_vs_stockfish(fish=shitfish, depth=0)
                 if win:
                     wins += 1
                 games += 1
-            print('Win rate:', wins/games)
             model.save_weights(WEIGHTS_FILE, overwrite=True)
-            print(self.validation())
+            print(datetime.now(), 'Win rate:', wins/games, self.validation())
 
     def play_vs_sunfish(self, eval=False):
         board = chess.Board()
@@ -111,7 +109,7 @@ class Trainer:
         self.train_from_match(board, result)
         return won
 
-    def play_vs_stockfish(self, eval=False, fish=stockfish, use_chessbot=False):
+    def play_vs_stockfish(self, eval=False, fish=stockfish, depth=4):
         board = chess.Board()
         fish.newgame()
         stockfish_color = np.random.randint(2)
@@ -121,10 +119,7 @@ class Trainer:
                 fish.setfenposition(board.fen())
                 move_str = fish.bestmove()['move']
             else:
-                if use_chessbot:
-                    move = chessbot.best_move(board)
-                else:
-                    move = self.best_move(board)
+                move = chessbot.best_move(board, depth=depth)
                 move_str = str(move)
 
             move = chess.Move.from_uci(move_str)
@@ -145,6 +140,7 @@ class Trainer:
         # print(result, won, len(board.move_stack))
         if eval:
             return board, won
+        chessbot.clear_cache()
         self.train_from_match(board, result)
         return won
 
@@ -153,7 +149,7 @@ class Trainer:
         games = 0
         for i in range(4):
             games += 1
-            board, won = self.play_vs_stockfish(True, shitfish, True)
+            board, won = self.play_vs_stockfish(True, shitfish)
             wins += won
         return wins/games
 

@@ -34,7 +34,7 @@ model.add(Activation("relu"))
 model.add(Dense(output_dim=2))
 model.add(Activation("softmax"))
 
-model.compile(loss='categorical_crossentropy', optimizer=SGD(momentum=0.5))
+model.compile(loss='categorical_crossentropy', optimizer=SGD(lr=0.001, momentum=0.5))
 
 if os.path.isfile(WEIGHTS_FILE):
     model.load_weights(WEIGHTS_FILE)
