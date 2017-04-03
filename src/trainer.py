@@ -16,14 +16,14 @@ class Trainer:
 
         # simulate a game vs self
         while not board.is_game_over():
-            # move = self.best_move(board, filter=True)
-            move = chessbot.best_move(board, depth=3)
+            move = chessbot.best_move(board, 0)
             board.push(move)
 
-        draw = board.result() == '1/2-1/2'
+        result = board.result()
+        draw = result == '1/2-1/2'
         moves = len(board.move_stack)
 
-        self.train_from_match(board)
+        self.train_from_match(board, result, use_stockfish=True)
         return draw, moves
 
     def train_vs_self(self):
@@ -51,7 +51,7 @@ class Trainer:
         while True:
             games = 0
             wins = 0
-            for i in range(60):
+            for i in range(100):
                 win = self.play_vs_stockfish(fish=shitfish, depth=0)
                 if win:
                     wins += 1
@@ -122,8 +122,12 @@ class Trainer:
                 move = chessbot.best_move(board, depth=depth)
                 move_str = str(move)
 
-            move = chess.Move.from_uci(move_str)
-            board.push(move)
+            try:
+                move = chess.Move.from_uci(move_str)
+                board.push(move)
+            except:
+                print(move_str)
+                return board, False
 
         result = board.result()
         # draw
@@ -140,7 +144,6 @@ class Trainer:
         # print(result, won, len(board.move_stack))
         if eval:
             return board, won
-        chessbot.clear_cache()
         self.train_from_match(board, result)
         return won
 
@@ -220,7 +223,7 @@ class Trainer:
                 print(t2- t1)
                 t1 = t2
 
-    def train_from_match(self, board, result=None):
+    def train_from_match(self, board, result=None, use_stockfish=False):
         if not result:
             result = board.result()
         # draw
@@ -237,19 +240,37 @@ class Trainer:
         while moves_num > 0:
             batch_size = min([moves_num, 50])
             moves_num -= batch_size
-            batch_x = np.zeros(shape=(batch_size, 2, 8, 8, 12), dtype=np.int8)
-            batch_y = np.zeros(shape=(batch_size, 2), dtype=np.float)
+            train_size = batch_size*2 if use_stockfish else batch_size
+            batch_x = np.zeros(shape=(train_size, 2, 8, 8, 12), dtype=np.int8)
+            batch_y = np.zeros(shape=(train_size, 2), dtype=np.float)
 
             for i in range(batch_size):
                 score = 1 #0.5 + ((len(moves)-i)/len(moves))/2
                 if winner == 2: #DRAW
                     score = 0.5
                 pov = not board.turn
-                batch_x[i][1] = chessbot.board_to_matrix(board, pov)
-                board.pop()
-                batch_x[i][0] = chessbot.board_to_matrix(board, pov)
-                batch_y[i] = [score, 1-score] if winner == pov else [1-score, score]
+                if use_stockfish:
+                    #move made
+                    batch_x[i*2][1] = chessbot.board_to_matrix(board, pov)
+                    board.pop()
+                    batch_x[i*2][0] = chessbot.board_to_matrix(board, pov)
+                    batch_y[i*2] = [1-score, score]
+                    #stockfish move
+                    stockfish.setfenposition(board.fen())
+                    move_str = stockfish.bestmove()['move']
+                    move = chess.Move.from_uci(move_str)
+                    batch_x[i*2+1][0] = batch_x[i*2][0]
+                    board.push(move)
+                    batch_x[i*2+1][1] = chessbot.board_to_matrix(board, pov)
+                    board.pop()
+                    batch_y[i*2+1] = [score, 1-score]
+                else:
+                    batch_x[i][1] = chessbot.board_to_matrix(board, pov)
+                    board.pop()
+                    batch_x[i][0] = chessbot.board_to_matrix(board, pov)
+                    batch_y[i] = [score, 1-score] if winner == pov else [1-score, score]
             model.train_on_batch(batch_x, batch_y)
+        chessbot.clear_cache()
 
     def validation(self):
         file = "ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn"

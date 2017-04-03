@@ -86,7 +86,8 @@ class ChessBot:
             board_hash = board.board_fen() + str(int(board.turn))
             cached = self.from_cache(board_hash)
             if cached:
-                score = cached
+                score = cached['score']
+                move = cached['move']
             else:
                 #eval board by looking at next move
                 scores = self.score_moves(moves, board)
@@ -98,7 +99,7 @@ class ChessBot:
                 if score > 0.5 and board.can_claim_threefold_repetition():
                     score = 0.5
                 #cache score
-                self.cache[0][board_hash] = score
+                self.cache[0][board_hash] = {'score': score, 'move': move}
         if not board.turn == self.player:
             return score, move
         else:
