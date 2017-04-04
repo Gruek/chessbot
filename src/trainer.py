@@ -51,8 +51,8 @@ class Trainer:
         while True:
             games = 0
             wins = 0
-            for i in range(100):
-                win = self.play_vs_stockfish(fish=shitfish, depth=0)
+            for i in range(10):
+                win = self.play_vs_stockfish(fish=stockfish, depth=0)
                 if win:
                     wins += 1
                 games += 1

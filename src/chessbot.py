@@ -13,10 +13,11 @@ class ChessBot:
     def clear_cache(self):
         self.cache = [{}] * self.max_cache
 
-    def best_move(self, board, depth=4, eval=False):
+    def best_move(self, board, depth=3, eval=False, breadth_range=0.8):
         #clean old cache
         self.cache.insert(0, {})
         self.cache = self.cache[:self.max_cache]
+        self.breadth_range = breadth_range
 
         self.player = board.turn
         score, move = self.score_move(board, depth)
@@ -24,7 +25,7 @@ class ChessBot:
             print(score)
         return move
 
-    def score_move(self, board, depth, alpha=0, beta=1, breadth_range=0.8):
+    def score_move(self, board, depth, alpha=0, beta=1):
         moves = list(board.legal_moves)
         if depth == 0 or len(moves) == 0:
             score, move = self.eval_move(board)
@@ -45,7 +46,7 @@ class ChessBot:
         breadth = 0
         moves = []
         for i, move in enumerate(move_scores):
-            if breadth > breadth_range:
+            if breadth > self.breadth_range:
                 break
             breadth += softmaxed_scores[i]
             moves.append(move['move'])
@@ -96,10 +97,10 @@ class ChessBot:
                         score = move_score['score']
                         move = move_score['move']
                 score = 1 - score
-                if score > 0.5 and board.can_claim_threefold_repetition():
-                    score = 0.5
                 #cache score
                 self.cache[0][board_hash] = {'score': score, 'move': move}
+            if score > 0.5 and board.can_claim_threefold_repetition():
+                score = 0.5
         if not board.turn == self.player:
             return score, move
         else:
