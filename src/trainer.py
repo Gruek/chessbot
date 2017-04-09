@@ -7,7 +7,7 @@ from pystockfish import Engine
 from datetime import datetime
 
 chessbot = ChessBot()
-stockfish = Engine(depth=20, param={"Threads": 6, "Hash": 12288})
+stockfish = Engine(depth=0, param={"Threads": 10, "Hash": 12288})
 shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 12288})
 
 class Trainer:
@@ -23,7 +23,7 @@ class Trainer:
         draw = result == '1/2-1/2'
         moves = len(board.move_stack)
 
-        self.train_from_match(board, result, use_stockfish=True)
+        self.train_from_match(board, result, use_stockfish=draw)
         return draw, moves
 
     def train_vs_self(self):
@@ -48,16 +48,21 @@ class Trainer:
         return chessbot.best_move(board, 0, eval)
 
     def train_vs_stockfish(self):
+        t1 = datetime.now()
+        games = 0
+        wins = 0
         while True:
-            games = 0
-            wins = 0
-            for i in range(10):
-                win = self.play_vs_stockfish(fish=stockfish, depth=0)
-                if win:
-                    wins += 1
-                games += 1
-            model.save_weights(WEIGHTS_FILE, overwrite=True)
-            print(datetime.now(), 'Win rate:', wins/games, self.validation())
+            win = self.play_vs_stockfish(fish=stockfish, depth=0)
+            if win:
+                wins += 1
+            games += 1
+            t2 = datetime.now()
+            if (t2 - t1).seconds/60 > 5:
+                model.save_weights(WEIGHTS_FILE, overwrite=True)
+                print(t2, 'Win rate:', wins/games, self.validation())
+                t1 = t2
+                games = 0
+                wins = 0
 
     def play_vs_sunfish(self, eval=False):
         board = chess.Board()
@@ -273,7 +278,7 @@ class Trainer:
         chessbot.clear_cache()
 
     def validation(self):
-        file = "ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn"
+        file = "ficsgamesdb_2013_standard2000_nomovetimes_1455314.pgn"
         file = open(file)
         sample = 0
         correct = 0
@@ -298,7 +303,7 @@ class Trainer:
 
             #eval the second half of the game
             moves_num = len(board.move_stack)//2
-            moves_num = min([5, moves_num])
+            moves_num = min([6, moves_num])
 
             batch_x = np.zeros(shape=(moves_num, 2, 8, 8, 12), dtype=np.int8)
             move_turn = not board.turn
@@ -349,10 +354,10 @@ class Trainer:
 
         games = 0
         pro_game = True
-        skips = 0
+        skips = 145887
 
+        t1 = datetime.now()
         while True:
-            t1 = datetime.now()
             try:
                 if pro_game:
                     game = self.get_match_from_data(pro_data)
@@ -407,10 +412,8 @@ class Trainer:
 
             games += 1
             pro_game = not pro_game
-            if games % 5000 == 0:
+            t2 = datetime.now()
+            if (t2 - t1).seconds/60 > 5:
                 model.save_weights(WEIGHTS_FILE, overwrite=True)
-                print('Games:', games)
-                print(self.validation())
-                t2 = datetime.now()
-                print(t2- t1)
+                print(t2, 'Games:', games, self.validation())
                 t1 = t2
