@@ -7,8 +7,8 @@ from pystockfish import Engine
 from datetime import datetime
 
 chessbot = ChessBot()
-stockfish = Engine(depth=0, param={"Threads": 10, "Hash": 12288})
-shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 12288})
+stockfish = Engine(depth=2, param={"Threads": 10, "Hash": 10000})
+shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 10000})
 
 class Trainer:
     def play_vs_self(self):
@@ -72,7 +72,7 @@ class Trainer:
 
         while not board.is_game_over():
             if board.turn == sun_color:
-                sun_move, score = sunfish_searcher.search(sunfish_board, 5)
+                sun_move, score = sunfish_searcher.search(sunfish_board, 0.01)
                 if board.turn == chess.BLACK:
                     move_str = sunfish.render(119-sun_move[0]) + sunfish.render(119 - sun_move[1])
                 else:
@@ -82,8 +82,8 @@ class Trainer:
                     if board.piece_at(move.from_square).piece_type == chess.PAWN:
                         move.promotion = chess.QUEEN
             else:
-                move = self.best_move(board)
-                # move = chessbot.best_move(board)
+                # move = self.best_move(board)
+                move = chessbot.best_move(board)
 
             move_str = str(move)
             sun_move = sunfish.parse(move_str[0:2]), sunfish.parse(move_str[2:4])
@@ -124,7 +124,7 @@ class Trainer:
                 fish.setfenposition(board.fen())
                 move_str = fish.bestmove()['move']
             else:
-                move = chessbot.best_move(board, depth=depth)
+                move = chessbot.best_move(board, depth=depth, think_time=1)
                 move_str = str(move)
 
             try:

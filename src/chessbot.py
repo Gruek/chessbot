@@ -1,6 +1,7 @@
 import chess
 from model_twostate import model, WEIGHTS_FILE
 import numpy as np
+import time
 
 def softmax(x):
     return np.exp(x) / np.sum(np.exp(x), axis=0)
@@ -13,13 +14,13 @@ class ChessBot:
     def clear_cache(self):
         self.cache = [{}] * self.max_cache
 
-    def best_move(self, board, depth=3, eval=False, breadth_range=0.8):
+    def best_move(self, board, depth=3, eval=False, think_time=2):
         #clean old cache
         self.cache.insert(0, {})
         self.cache = self.cache[:self.max_cache]
-        self.breadth_range = breadth_range
 
         self.player = board.turn
+        self.time_limit = int(time.time()) + think_time
         score, move = self.score_move(board, depth)
         if eval:
             print(score)
@@ -27,34 +28,35 @@ class ChessBot:
 
     def score_move(self, board, depth, alpha=0, beta=1):
         moves = list(board.legal_moves)
-        if depth == 0 or len(moves) == 0:
-            score, move = self.eval_move(board)
+        if time.time() > self.time_limit or len(moves) == 0:
+            score = self.eval_move(board)
             #if perfect score then sort by depth
             if score == 1:
                 score += depth
             elif score == 0:
                 score -= depth
-            return score, move
+            return score, None
         max_player = board.turn == self.player
         best_score = None
         best_move = None
-        #get top max_breadth moves
-        move_scores = self.score_moves(moves, board)
-        move_scores.sort(key=lambda x: x['score'], reverse=True)
-        scores = [score['score'] for score in move_scores]
-        softmaxed_scores = softmax(scores)
-        breadth = 0
-        moves = []
-        for i, move in enumerate(move_scores):
-            if breadth > self.breadth_range:
-                break
-            breadth += softmaxed_scores[i]
-            moves.append(move['move'])
+
+        move_scores = self.possible_moves(moves, board)
 
         #go deeper
-        for move in moves:
+        while True:
+            move_scores.sort(key=lambda x: x['score'], reverse=max_player)
+            move = move_scores[0]['move']
+            temp_alpha = alpha
+            temp_beta = beta
+            if len(move_scores) > 1:
+                temp_limit = move_scores[1]['score']
+                if max_player:
+                    temp_alpha = max([temp_alpha, temp_limit])
+                else:
+                    temp_beta = min([temp_beta, temp_limit])
             board.push(move)
-            score, bm = self.score_move(board, depth-1, alpha, beta)
+            score, bm = self.score_move(board, depth-1, temp_alpha, temp_beta)
+            move_scores[0]['score'] = score
             board.pop()
             if best_score == None:
                 best_score = score
@@ -72,12 +74,13 @@ class ChessBot:
             if beta <= alpha:
                 #prune
                 break
+            if time.time() > self.time_limit:
+                break
         return best_score, best_move
  
     def eval_move(self, board):
         moves = list(board.legal_moves)
         score = -1
-        move = None
         result = board.result()
         if result in ['1-0', '0-1']:
             score = 1
@@ -88,41 +91,32 @@ class ChessBot:
             cached = self.from_cache(board_hash)
             if cached:
                 score = cached['score']
-                move = cached['move']
             else:
-                #eval board by looking at next move
-                scores = self.score_moves(moves, board)
-                for move_score in scores:
-                    if move_score['score'] > score:
-                        score = move_score['score']
-                        move = move_score['move']
-                score = 1 - score
+                # run neural network
+                batch_x = np.zeros(shape=(1, 2, 8, 8, 12), dtype=np.int8)
+                temp_move = board.pop()
+                pov = board.turn
+                batch_x[0][0] = self.board_to_matrix(board, pov)
+                board.push(temp_move)
+                batch_x[0][1] = self.board_to_matrix(board, pov)
+                out = model.predict(batch_x, verbose=0)
+                score = out[0][0]
                 #cache score
-                self.cache[0][board_hash] = {'score': score, 'move': move}
+                self.cache[0][board_hash] = {'score': score }
             if score > 0.5 and board.can_claim_threefold_repetition():
                 score = 0.5
         if not board.turn == self.player:
-            return score, move
+            return score
         else:
-            return 1-score, move
+            return 1-score
 
-    def score_moves(self, moves, board):
-        scores = []
-        if len(moves) > 0:
-            batch_x = np.zeros(shape=(len(moves), 2, 8, 8, 12), dtype=np.int8)
-            pov = board.turn
-            for i, move in enumerate(moves):
-                batch_x[i][0] = self.board_to_matrix(board, pov)
-                board.push(move)
-                if board.result() in ['1-0', '0-1']:
-                    board.pop()
-                    return [{'score': 1, 'move': move}]
-                batch_x[i][1] = self.board_to_matrix(board, pov)
-                board.pop()
-            out = model.predict(batch_x, verbose=0)
-            for i, score in enumerate(out):
-                scores.append({'score': score[0], 'move': moves[i]})
-        return scores
+    def possible_moves(self, moves, board):
+        move_scores = []
+        for move in moves:
+            board.push(move)
+            move_scores.append({'move': move, 'score': self.eval_move(board)})
+            board.pop()
+        return move_scores
 
     def board_to_matrix(self, board, pov=None):
         if not pov:
