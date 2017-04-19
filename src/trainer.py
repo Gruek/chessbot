@@ -7,8 +7,8 @@ from pystockfish import Engine
 from datetime import datetime
 
 chessbot = ChessBot()
-stockfish = Engine(depth=2, param={"Threads": 10, "Hash": 10000})
-shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 10000})
+stockfish = Engine(depth=20, param={"Threads": 10, "Hash": 8000})
+shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 8000})
 
 class Trainer:
     def play_vs_self(self):
@@ -52,14 +52,15 @@ class Trainer:
         games = 0
         wins = 0
         while True:
-            win = self.play_vs_stockfish(fish=stockfish, depth=0)
+            # randfish = Engine(depth=np.random.randint(20), param={"Threads": 10, "Hash": 8000})
+            win = self.play_vs_stockfish(fish=stockfish, think_time=np.random.randint(10)+1)
             if win:
                 wins += 1
             games += 1
             t2 = datetime.now()
             if (t2 - t1).seconds/60 > 5:
                 model.save_weights(WEIGHTS_FILE, overwrite=True)
-                print(t2, 'Win rate:', wins/games, self.validation())
+                print(t2, 'Win rate:', wins/games, 'Games:', games, self.validation())
                 t1 = t2
                 games = 0
                 wins = 0
@@ -114,7 +115,7 @@ class Trainer:
         self.train_from_match(board, result)
         return won
 
-    def play_vs_stockfish(self, eval=False, fish=stockfish, depth=4):
+    def play_vs_stockfish(self, eval=False, fish=stockfish, think_time=2):
         board = chess.Board()
         fish.newgame()
         stockfish_color = np.random.randint(2)
@@ -124,7 +125,7 @@ class Trainer:
                 fish.setfenposition(board.fen())
                 move_str = fish.bestmove()['move']
             else:
-                move = chessbot.best_move(board, depth=depth, think_time=1)
+                move = chessbot.best_move(board, think_time=think_time)
                 move_str = str(move)
 
             try:
@@ -146,8 +147,8 @@ class Trainer:
         won = False
         if winner < 2 and winner != stockfish_color:
             won = True
-        # print(result, won, len(board.move_stack))
         if eval:
+            print(result, won, len(board.move_stack))
             return board, won
         self.train_from_match(board, result)
         return won
