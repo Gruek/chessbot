@@ -1,5 +1,5 @@
 import chess
-from model_twostate import model, WEIGHTS_FILE
+from model_conv import model, WEIGHTS_FILE
 import numpy as np
 import time
 
@@ -95,12 +95,8 @@ class ChessBot:
                 # dead = cached['dead']
             else:
                 # run neural network
-                batch_x = np.zeros(shape=(1, 2, 8, 8, 12), dtype=np.int8)
-                temp_move = board.pop()
-                pov = board.turn
-                batch_x[0][0] = self.board_to_matrix(board, pov)
-                board.push(temp_move)
-                batch_x[0][1] = self.board_to_matrix(board, pov)
+                batch_x = np.zeros(shape=(1, 8, 8, 12), dtype=np.int8)
+                batch_x[0] = self.board_to_matrix(board)
                 out = model.predict(batch_x, verbose=0)
                 score = out[0][0]
                 #cache score
