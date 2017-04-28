@@ -2,7 +2,7 @@ import chess
 import chess.pgn
 import numpy as np
 from sunfish import sunfish
-from chessbot import ChessBot, model, WEIGHTS_FILE
+from chessbot import ChessBot
 from pystockfish import Engine
 from datetime import datetime
 
@@ -38,7 +38,7 @@ class Trainer:
                 draws += draw
                 total_moves += moves
                 games += 1
-            model.save_weights(WEIGHTS_FILE, overwrite=True)
+            chessbot.save_models()
             print('Draw rate:', draws / games, 'Avg moves:', total_moves / games)
             print(self.validation())
             #if iterations%20==0:
@@ -59,7 +59,7 @@ class Trainer:
             games += 1
             t2 = datetime.now()
             if (t2 - t1).seconds/60 > 5:
-                model.save_weights(WEIGHTS_FILE, overwrite=True)
+                chessbot.save_models()
                 print(t2, 'Win rate:', wins/games, 'Games:', games, self.validation())
                 t1 = t2
                 games = 0
@@ -222,7 +222,7 @@ class Trainer:
 
             games += 1
             if games % 5000 == 0:
-                model.save_weights(WEIGHTS_FILE, overwrite=True)
+                chessbot.save_models()
                 print('Games:', games, 'Epoch:', epoch)
                 print(self.validation())
                 t2 = datetime.now()
@@ -245,12 +245,14 @@ class Trainer:
         moves_num = len(moves)
         while moves_num > 0:
             batch_size = min([moves_num, 50])
-            moves_num -= batch_size
             train_size = batch_size*2 if use_stockfish else batch_size
             batch_x = np.zeros(shape=(train_size, 8, 8, 12), dtype=np.int8)
             batch_y = np.zeros(shape=(train_size, 2), dtype=np.float)
 
+            model = chessbot.get_model(board)
             for i in range(batch_size):
+                if model != chessbot.get_model(board):
+                    break
                 score = 1 #0.5 + ((len(moves)-i)/len(moves))/2
                 if winner == 2: #DRAW
                     score = 0.5
@@ -259,6 +261,7 @@ class Trainer:
                     #move made
                     batch_x[i*2] = chessbot.board_to_matrix(board, pov)
                     batch_y[i*2] = [1-score, score]
+                    board.pop()
                     #stockfish move
                     stockfish.setfenposition(board.fen())
                     move_str = stockfish.bestmove()['move']
@@ -270,6 +273,8 @@ class Trainer:
                 else:
                     batch_x[i] = chessbot.board_to_matrix(board, pov)
                     batch_y[i] = [score, 1-score] if winner == pov else [1-score, score]
+                    board.pop()
+                moves_num -= 1
             model.train_on_batch(batch_x, batch_y)
         chessbot.clear_cache()
 
@@ -278,7 +283,8 @@ class Trainer:
         file = open(file)
         sample = 0
         correct = 0
-        max_sample = 1000
+        max_sample = 2000
+        model = chessbot.get_model()
 
         while True:
             if sample > max_sample:
@@ -301,13 +307,14 @@ class Trainer:
             moves_num = len(board.move_stack)//2
             moves_num = min([6, moves_num])
 
-            batch_x = np.zeros(shape=(moves_num, 2, 8, 8, 12), dtype=np.int8)
+            batch_x = np.zeros(shape=(moves_num, 8, 8, 12), dtype=np.int8)
             move_turn = not board.turn
 
             for i in range(moves_num):
-                pov = not board.turn
-                batch_x[i] = chessbot.board_to_matrix(board, pov)
+                batch_x[i] = chessbot.board_to_matrix(board)
+                board.pop()
             out = model.predict(batch_x, verbose=0)
+            
             winner = result == '1-0'
             for score in out:
                 if winner == move_turn and score[0] > 0.5:
@@ -327,6 +334,7 @@ class Trainer:
         return game
 
     def train_from_data(self):
+        model = chessbot.get_model()
         pro_data = {
             'files': [
                 "ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn",
@@ -348,7 +356,7 @@ class Trainer:
 
         games = 0
         pro_game = True
-        skips = 145887
+        skips = 0
 
         t1 = datetime.now()
         while True:
@@ -372,7 +380,7 @@ class Trainer:
                 continue
 
             if not pro_game:
-                self.train_from_match(board, result)
+                self.train_from_match(board, result, False)
             else:
                 winner = 2
                 if result == '1-0':
@@ -380,6 +388,13 @@ class Trainer:
                 elif result == '0-1':
                     winner = 0
                 moves_num = len(board.move_stack)
+                skip_last = 10 #skip last 10 moves
+                if moves_num < skip_last + 2:
+                    continue
+
+                for _ in range(skip_last):
+                    board.pop()
+                    moves_num -= 1
                 while moves_num > 0:
                     batch_size = min([moves_num, 25])
                     moves_num -= batch_size
@@ -393,6 +408,7 @@ class Trainer:
                         batch_x[2*i] = chessbot.board_to_matrix(board, pov)
                         batch_y[2*i] = [1, 0]
                         # random move == bad
+                        board.pop()
                         possible_moves = list(board.legal_moves)
                         random_move = possible_moves[np.random.randint(len(possible_moves))]
                         board.push(random_move)
@@ -405,6 +421,6 @@ class Trainer:
             pro_game = not pro_game
             t2 = datetime.now()
             if (t2 - t1).seconds/60 > 5:
-                model.save_weights(WEIGHTS_FILE, overwrite=True)
+                chessbot.save_models()
                 print(t2, 'Games:', games, self.validation())
                 t1 = t2

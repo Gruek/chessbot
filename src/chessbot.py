@@ -1,5 +1,5 @@
 import chess
-from model_conv import model, WEIGHTS_FILE
+from model_conv import get_model, WEIGHTS_FILE
 import numpy as np
 import time
 
@@ -10,6 +10,7 @@ class ChessBot:
     def __init__(self):
         self.max_cache = 50
         self.cache = [{}] * self.max_cache
+        self.model_mid = get_model(WEIGHTS_FILE + '_mid.h5')
 
     def clear_cache(self):
         self.cache = [{}] * self.max_cache
@@ -36,9 +37,9 @@ class ChessBot:
         best_move = None
 
         move_scores = self.possible_moves(moves, board)
+        move_scores.sort(key=lambda x: x['score'], reverse=max_player)
 
         while True:
-            move_scores.sort(key=lambda x: x['score'], reverse=max_player)
             best_move = move_scores[0]['move']
             best_score = move_scores[0]['score']
             if alpha >= best_score or best_score >= beta:
@@ -72,7 +73,10 @@ class ChessBot:
             board_hash = board.board_fen() + str(int(board.turn))
             self.cache[0][board_hash] = {'score': score, 'dead': dead}
             move_to_eval['dead'] = dead
-            move_to_eval['score'] = score
+            if score != move_to_eval['score']: #if score changed then sort
+                del move_scores[i]
+                move_to_eval['score'] = score
+                self.insert_sorted(move_scores, move_to_eval, lambda x: x['score'], max_player)
             board.pop()
             
         return best_score, best_move, False
@@ -97,6 +101,7 @@ class ChessBot:
                 # run neural network
                 batch_x = np.zeros(shape=(1, 8, 8, 12), dtype=np.int8)
                 batch_x[0] = self.board_to_matrix(board)
+                model = self.get_model(board)
                 out = model.predict(batch_x, verbose=0)
                 score = out[0][0]
                 #cache score
@@ -145,3 +150,24 @@ class ChessBot:
                 self.cache[0][board_hash] = ret
                 return ret
         return None
+
+    def insert_sorted(self, l, item, key=lambda x: x, reverse=False):
+        i = 0
+        val = key(item)
+        while i < len(l):
+            index_val = key(l[i])
+            if reverse:
+                if index_val < val:
+                    break
+            else:
+                if index_val > val:
+                    break
+            i += 1
+        l.insert(i, item)
+
+    def get_model(self, board=None):
+        return self.model_mid
+
+    def save_models(self):
+        model_mid.save_weights(WEIGHTS_FILE + '_mid.h5', overwrite=True)
+
