@@ -9,6 +9,8 @@ from datetime import datetime
 chessbot = ChessBot()
 stockfish = Engine(depth=20, param={"Threads": 10, "Hash": 8000})
 shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 8000})
+model_overlap = 8
+model_trained_moves_tally = {'early': 0, 'mid': 0, 'late': 0, 'early_cache': 0, 'mid_cache': 0, 'late_cache': 0}
 
 class Trainer:
     def play_vs_self(self):
@@ -51,16 +53,24 @@ class Trainer:
         t1 = datetime.now()
         games = 0
         wins = 0
+
         while True:
             # randfish = Engine(depth=np.random.randint(20), param={"Threads": 10, "Hash": 8000})
-            win = self.play_vs_stockfish(fish=stockfish, think_time=np.random.randint(10)+1)
+            win = self.play_vs_stockfish(fish=stockfish, think_time=0.5)
             if win:
                 wins += 1
             games += 1
             t2 = datetime.now()
             if (t2 - t1).seconds/60 > 5:
-                chessbot.save_models()
-                print(t2, 'Win rate:', wins/games, 'Games:', games, self.validation())
+                chessbot.save_model()
+                chessbot.load_model('early')
+                early_val = self.validation()
+                chessbot.load_model('mid')
+                mid_val = self.validation()
+                chessbot.load_model('late')
+                late_val = self.validation()
+                print(t2, 'Win rate:', wins/games, 'Games:', games, 'early val', early_val, 'mid val:', mid_val, 'late val:', late_val)
+                print(model_trained_moves_tally)
                 t1 = t2
                 games = 0
                 wins = 0
@@ -150,6 +160,7 @@ class Trainer:
         if eval:
             print(result, won, len(board.move_stack))
             return board, won
+        self.train_from_cache()
         self.train_from_match(board, result)
         return won
 
@@ -198,38 +209,16 @@ class Trainer:
 
             self.train_from_match(board, game.headers["Result"])
 
-            # moves_num = len(board.move_stack)
-            # while moves_num > 0:
-            # 	batch_size = min([moves_num, 25])
-            # 	moves_num -= batch_size
-
-            # 	batch_x = np.zeros(shape=(batch_size*2, 8, 8, 12), dtype=np.int8)
-            # 	batch_y = np.zeros(shape=(batch_size*2, 2), dtype=np.float)
-
-            # 	for i in range(batch_size):
-            # 		# pro moves == good
-            # 		batch_x[2*i] = self.board_to_matrix(board)
-            # 		batch_y[2*i] = [1, 0]
-            # 		board.pop()
-            # 		# random move == bad
-            # 		possible_moves = list(board.legal_moves)
-            # 		random_move = possible_moves[np.random.randint(len(possible_moves))]
-            # 		board.push(random_move)
-            # 		batch_x[2*i+1] = self.board_to_matrix(board)
-            # 		batch_y[2*i+1] = [0, 1]
-            # 		board.pop()
-            # 	model.train_on_batch(batch_x, batch_y)
-
             games += 1
             if games % 5000 == 0:
-                chessbot.save_models()
+                chessbot.save_model()
                 print('Games:', games, 'Epoch:', epoch)
                 print(self.validation())
                 t2 = datetime.now()
                 print(t2- t1)
                 t1 = t2
 
-    def train_from_match(self, board, result=None, use_stockfish=False):
+    def train_from_match(self, board, result=None, use_stockfish=False, train_model=None):
         if not result:
             result = board.result()
         # draw
@@ -241,18 +230,50 @@ class Trainer:
             #black
             winner = chess.BLACK
 
-        moves = list(board.move_stack)
-        moves_num = len(moves)
-        while moves_num > 0:
-            batch_size = min([moves_num, 50])
+        popped_moves = []
+        def replay_moves():
+            for _ in range(model_overlap):
+                if len(popped_moves) == 0:
+                    break
+                board.push(popped_moves.pop())
+
+        # if training specific model then skip moves that dont belong
+        if train_model:
+            if train_model == 'early':
+                while len(board.move_stack) > 12 + model_overlap:
+                    board.pop()
+            else:
+                while len(board.move_stack) > 0:
+                    if chessbot.choose_model(board) == train_model:
+                        break
+                    if train_model == 'late':
+                        return
+                    popped_moves.append(board.pop())
+                replay_moves()
+        model_to_train = train_model if train_model else chessbot.choose_model(board)
+        chessbot.load_model(model_to_train)
+        while len(board.move_stack) > 0:
+            if train_model and chessbot.choose_model(board) != train_model:
+                # this match is done
+                break
+            if not train_model:
+                temp_model_to_train = chessbot.choose_model(board)
+                # if changing model to train
+                if model_to_train != temp_model_to_train:
+                    model_to_train = temp_model_to_train
+                    chessbot.save_model()
+                    replay_moves()
+                    chessbot.load_model(model_to_train)
+
+            # prepare input tensor
+            batch_size = min([len(board.move_stack), model_overlap])
             train_size = batch_size*2 if use_stockfish else batch_size
             batch_x = np.zeros(shape=(train_size, 8, 8, 12), dtype=np.int8)
             batch_y = np.zeros(shape=(train_size, 2), dtype=np.float)
 
-            model = chessbot.get_model(board)
+            # train on batch
             for i in range(batch_size):
-                if model != chessbot.get_model(board):
-                    break
+                model_trained_moves_tally[chessbot.model_name] += 1
                 score = 1 #0.5 + ((len(moves)-i)/len(moves))/2
                 if winner == 2: #DRAW
                     score = 0.5
@@ -274,17 +295,55 @@ class Trainer:
                     batch_x[i] = chessbot.board_to_matrix(board, pov)
                     batch_y[i] = [score, 1-score] if winner == pov else [1-score, score]
                     board.pop()
-                moves_num -= 1
-            model.train_on_batch(batch_x, batch_y)
+            chessbot.model.train_on_batch(batch_x, batch_y)
         chessbot.clear_cache()
+        if not train_model:
+            chessbot.save_model()
+
+    def train_from_cache(self):
+        models = {}
+        i = chessbot.max_cache - 1
+        # categorise cache by model
+        while i >= 0:
+            cachen = chessbot.cache[i]
+            for cache_hash, cache in cachen.items():
+                if 'train_model' in cache:
+                    model = cache['train_model']
+                    if not model in models:
+                        models[model] = {}
+                    models[model][cache_hash] = cache
+            i -= 1
+
+        # train on each model
+        for model, samples in models.items():
+            chessbot.load_model(model)
+            # convert samples to list
+            pairs = []
+            for sample in samples.values():
+                x = chessbot.board_to_matrix(chess.Board(fen=sample['train_fen']))
+                score = sample['score']
+                y = [score, 1-score]
+                pairs.append({'x': x, 'y': y})
+            
+            while len(pairs) > 0:
+                batch_size = min([len(pairs), 25])
+                batch_x = np.zeros(shape=(batch_size, 8, 8, 12), dtype=np.int8)
+                batch_y = np.zeros(shape=(batch_size, 2), dtype=np.float)
+                for i2 in range(batch_size):
+                    pair = pairs.pop()
+                    batch_x[i2] = pair['x']
+                    batch_y[i2] = pair['y']
+                chessbot.model.train_on_batch(batch_x, batch_y)
+                model_trained_moves_tally[chessbot.model_name+"_cache"] += batch_size
+            chessbot.save_model()
+
 
     def validation(self):
         file = "ficsgamesdb_2013_standard2000_nomovetimes_1455314.pgn"
         file = open(file)
         sample = 0
         correct = 0
-        max_sample = 2000
-        model = chessbot.get_model()
+        max_sample = 500
 
         while True:
             if sample > max_sample:
@@ -303,6 +362,8 @@ class Trainer:
             if not result in ['1-0', '0-1']:
                 continue
 
+            # chessbot.load_model(chessbot.choose_model(board))
+
             #eval the second half of the game
             moves_num = len(board.move_stack)//2
             moves_num = min([6, moves_num])
@@ -313,11 +374,11 @@ class Trainer:
             for i in range(moves_num):
                 batch_x[i] = chessbot.board_to_matrix(board)
                 board.pop()
-            out = model.predict(batch_x, verbose=0)
+            out = chessbot.model.predict(batch_x, verbose=0)
             
             winner = result == '1-0'
             for score in out:
-                if winner == move_turn and score[0] > 0.5:
+                if winner == move_turn and score[0] >= 0.5:
                     correct += 1
                 if winner != move_turn and score[0] < 0.5:
                     correct += 1
@@ -334,7 +395,6 @@ class Trainer:
         return game
 
     def train_from_data(self):
-        model = chessbot.get_model()
         pro_data = {
             'files': [
                 "ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn",
@@ -346,6 +406,11 @@ class Trainer:
         }
         standard_data = {
             'files': ["ficsgamesdb_2016_chess_nomovetimes_1445486.pgn"],
+            # 'files': [
+            #     "ficsgamesdb_2016_standard2000_nomovetimes_1435145.pgn",
+            #     "ficsgamesdb_2015_standard2000_nomovetimes_1441190.pgn",
+            #     "ficsgamesdb_2014_standard2000_nomovetimes_1441191.pgn",
+            # ],
             'file_index': 0,
             'file': None
         }
@@ -354,8 +419,11 @@ class Trainer:
         standard_data['file_index'] = np.random.randint(len(standard_data['files']))
         standard_data['file'] = open(standard_data['files'][standard_data['file_index']])
 
+        models = ['early', 'mid', 'late']
+        train_model = np.random.randint(len(models))
+
         games = 0
-        pro_game = True
+        pro_game = False
         skips = 0
 
         t1 = datetime.now()
@@ -379,22 +447,19 @@ class Trainer:
                 skips -= 1
                 continue
 
-            if not pro_game:
-                self.train_from_match(board, result, False)
+            if not pro_game or models[train_model] != 'early':
+                self.train_from_match(board, result, False, models[train_model])
             else:
+                chessbot.load_model(models[train_model])
+                while len(board.move_stack) > 12 + model_overlap:
+                    board.pop()
                 winner = 2
                 if result == '1-0':
                     winner = 1
                 elif result == '0-1':
                     winner = 0
                 moves_num = len(board.move_stack)
-                skip_last = 10 #skip last 10 moves
-                if moves_num < skip_last + 2:
-                    continue
-
-                for _ in range(skip_last):
-                    board.pop()
-                    moves_num -= 1
+                model_trained_moves_tally[models[train_model]] += moves_num
                 while moves_num > 0:
                     batch_size = min([moves_num, 25])
                     moves_num -= batch_size
@@ -415,12 +480,21 @@ class Trainer:
                         batch_x[2*i+1] = chessbot.board_to_matrix(board, pov)
                         batch_y[2*i+1] = [0, 1]
                         board.pop()
-                    model.train_on_batch(batch_x, batch_y)
+                    chessbot.model.train_on_batch(batch_x, batch_y)
 
             games += 1
             pro_game = not pro_game
             t2 = datetime.now()
             if (t2 - t1).seconds/60 > 5:
-                chessbot.save_models()
-                print(t2, 'Games:', games, self.validation())
+                chessbot.save_model()
+                chessbot.load_model('early')
+                early_val = self.validation()
+                chessbot.load_model('mid')
+                mid_val = self.validation()
+                chessbot.load_model('late')
+                late_val = self.validation()
+                print(t2, 'Games:', games, 'early val', early_val, 'mid val:', mid_val, 'late val:', late_val, 'moves:', model_trained_moves_tally[models[train_model]])
+                model_trained_moves_tally[models[train_model]] = 0
+                games = 0
+                train_model = (train_model + 1) % len(models)
                 t1 = t2

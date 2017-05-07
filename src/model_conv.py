@@ -16,8 +16,9 @@ session = tf.Session(config=config)
 KTF.set_session(session)
 
 WEIGHTS_FILE = 'weights_conv'
+FILE_EXT = '.h5'
 
-def get_model(filename):
+def get_model():
 
     inp = Input(shape=(8,8,12,))
 
@@ -48,11 +49,13 @@ def get_model(filename):
 
     out = merge([conv1_out, conv2_out, conv3_out, conv4_out, dense_out], mode='concat')
 
-    # out = Dropout(0.1)(out)
+    out = Dropout(0.2)(out)
     d1 = Dense(2048, activation='relu')
     out = d1(out)
+    out = Dropout(0.1)(out)
     d2 = Dense(512, activation='relu')
     out = d2(out)
+    out = Dropout(0.1)(out)
     d3 = Dense(2, activation='relu')
     out = d3(out)
     out = Activation("softmax")(out)
@@ -60,8 +63,6 @@ def get_model(filename):
     model = Model(input=inp, output=out)
     model.compile(loss='categorical_crossentropy', optimizer=SGD(momentum=0.6, lr=0.005))
 
-    if os.path.isfile(filename):
-        model.load_weights(filename)
     return model
 
 # plot(model, to_file='model.png')

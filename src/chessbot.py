@@ -1,7 +1,9 @@
+import os
 import chess
-from model_conv import get_model, WEIGHTS_FILE
+from model_conv import get_model, WEIGHTS_FILE, FILE_EXT
 import numpy as np
 import time
+import shutil
 
 def softmax(x):
     return np.exp(x) / np.sum(np.exp(x), axis=0)
@@ -10,21 +12,24 @@ class ChessBot:
     def __init__(self):
         self.max_cache = 50
         self.cache = [{}] * self.max_cache
-        self.model_mid = get_model(WEIGHTS_FILE + '_mid.h5')
+        self.model = get_model()
+        self.model_name = None
 
     def clear_cache(self):
         self.cache = [{}] * self.max_cache
 
-    def best_move(self, board, depth=10, eval=False, think_time=30):
+    def best_move(self, board, depth=6, eval=False, think_time=30):
         #clean old cache
         self.cache.insert(0, {})
         self.cache = self.cache[:self.max_cache]
+        self.states_evaled = 0
 
+        self.load_model(self.choose_model(board))
         self.player = board.turn
         self.time_limit = time.time() + think_time
         score, move, dead = self.score_move(board, depth)
         if eval:
-            print(score)
+            print(score, self.states_evaled)
         return move
 
     def score_move(self, board, depth, alpha=0, beta=1):
@@ -42,11 +47,8 @@ class ChessBot:
         while True:
             best_move = move_scores[0]['move']
             best_score = move_scores[0]['score']
-            if alpha >= best_score or best_score >= beta:
-                break
             if time.time() > self.time_limit:
                 break
-
             move_to_eval = None
             i = 0
             while True:
@@ -58,6 +60,10 @@ class ChessBot:
                 i += 1
             if not move_to_eval:
                 return best_score, best_move, True
+            #if move to eval is within limits
+            if alpha >= move_to_eval['score'] or move_to_eval['score'] >= beta:
+                return best_score, best_move, True
+            # print(move_to_eval)
             temp_alpha = alpha
             temp_beta = beta
             if len(move_scores) > i+1:
@@ -71,7 +77,7 @@ class ChessBot:
             score, bm, dead = self.score_move(board, depth-1, temp_alpha, temp_beta)
             #cache updated score
             board_hash = board.board_fen() + str(int(board.turn))
-            self.cache[0][board_hash] = {'score': score, 'dead': dead}
+            self.cache[0][board_hash] = {'score': score, 'dead': dead, 'train_fen': board.fen(), 'train_model': self.model_name}
             move_to_eval['dead'] = dead
             if score != move_to_eval['score']: #if score changed then sort
                 del move_scores[i]
@@ -99,10 +105,11 @@ class ChessBot:
                 # dead = cached['dead']
             else:
                 # run neural network
+                # print(len(board.move_stack))
+                self.states_evaled += 1
                 batch_x = np.zeros(shape=(1, 8, 8, 12), dtype=np.int8)
                 batch_x[0] = self.board_to_matrix(board)
-                model = self.get_model(board)
-                out = model.predict(batch_x, verbose=0)
+                out = self.model.predict(batch_x, verbose=0)
                 score = out[0][0]
                 #cache score
                 self.cache[0][board_hash] = {'score': score, 'dead': dead }
@@ -165,9 +172,46 @@ class ChessBot:
             i += 1
         l.insert(i, item)
 
-    def get_model(self, board=None):
-        return self.model_mid
+    def count_pieces(self, board):
+        pieces = 0
+        for x in range(8):
+            for y in range(8):
+                piece = board.piece_at(x*8+y)
+                if piece:
+                    pieces += 1
+        return pieces
 
-    def save_models(self):
-        model_mid.save_weights(WEIGHTS_FILE + '_mid.h5', overwrite=True)
+    def choose_model(self, board):
+        if len(board.move_stack) < 12:
+            return 'early'
+        if self.count_pieces(board) < 12:
+            return 'late'
+        return 'mid'
+
+    def get_model_file(self, name, temp=False):
+        fn = WEIGHTS_FILE + '_' + name
+        if temp:
+            fn += '_temp'
+        fn += FILE_EXT
+        return fn
+
+    def load_model(self, name):
+        if name != self.model_name:
+            self.model_name = name
+            filename = self.get_model_file(self.model_name)
+            if os.path.isfile(filename):
+                # print('loading', self.model_name)
+                self.model.load_weights(filename)
+
+    def save_model(self):
+        temp_file = self.get_model_file(self.model_name, True)
+        real_file = self.get_model_file(self.model_name)
+        try:
+            self.model.save_weights(temp_file)
+            os.remove(real_file)
+            shutil.move(temp_file, real_file)
+        except KeyboardInterrupt:
+            os.remove(temp_file)
+            self.save_model()
+            exit()
 
