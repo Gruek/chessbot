@@ -10,7 +10,7 @@ def softmax(x):
 
 class ChessBot:
     def __init__(self):
-        self.max_cache = 50
+        self.max_cache = 100
         self.cache = [{}] * self.max_cache
         self.model = get_model()
         self.model_name = None

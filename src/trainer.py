@@ -7,7 +7,7 @@ from pystockfish import Engine
 from datetime import datetime
 
 chessbot = ChessBot()
-stockfish = Engine(depth=20, param={"Threads": 10, "Hash": 8000})
+stockfish = Engine(depth=20, param={"Threads": 10, "Hash": 10000})
 shitfish = Engine(depth=0, param={"Threads": 6, "Hash": 8000})
 model_overlap = 8
 model_trained_moves_tally = {'early': 0, 'mid': 0, 'late': 0, 'early_cache': 0, 'mid_cache': 0, 'late_cache': 0}
@@ -18,13 +18,14 @@ class Trainer:
 
         # simulate a game vs self
         while not board.is_game_over():
-            move = chessbot.best_move(board, 0)
+            move = chessbot.best_move(board, think_time=10)
             board.push(move)
 
         result = board.result()
         draw = result == '1/2-1/2'
         moves = len(board.move_stack)
 
+        self.train_from_cache()
         self.train_from_match(board, result, use_stockfish=draw)
         return draw, moves
 
@@ -35,14 +36,20 @@ class Trainer:
             games = 0
             draws = 0
             total_moves = 0
-            for i in range(10):
+            for i in range(1):
                 draw, moves = self.play_vs_self()
                 draws += draw
                 total_moves += moves
                 games += 1
-            chessbot.save_models()
-            print('Draw rate:', draws / games, 'Avg moves:', total_moves / games)
-            print(self.validation())
+            chessbot.save_model()
+            chessbot.load_model('early')
+            early_val = self.validation()
+            chessbot.load_model('mid')
+            mid_val = self.validation()
+            chessbot.load_model('late')
+            late_val = self.validation()
+            print('Draw rate:', draws / games, 'Avg moves:', total_moves / games, 'early val', early_val, 'mid val:', mid_val, 'late val:', late_val)
+            print(model_trained_moves_tally)
             #if iterations%20==0:
                 #print('Win Rate:', self.test_winrate())
 
@@ -135,7 +142,7 @@ class Trainer:
                 fish.setfenposition(board.fen())
                 move_str = fish.bestmove()['move']
             else:
-                move = chessbot.best_move(board, think_time=think_time)
+                move = chessbot.best_move(board, depth=1, think_time=think_time)
                 move_str = str(move)
 
             try:
@@ -160,7 +167,7 @@ class Trainer:
         if eval:
             print(result, won, len(board.move_stack))
             return board, won
-        self.train_from_cache()
+        # self.train_from_cache()
         self.train_from_match(board, result)
         return won
 
@@ -326,7 +333,7 @@ class Trainer:
                 pairs.append({'x': x, 'y': y})
             
             while len(pairs) > 0:
-                batch_size = min([len(pairs), 25])
+                batch_size = min([len(pairs), 10])
                 batch_x = np.zeros(shape=(batch_size, 8, 8, 12), dtype=np.int8)
                 batch_y = np.zeros(shape=(batch_size, 2), dtype=np.float)
                 for i2 in range(batch_size):
