@@ -5,6 +5,7 @@ from sunfish import sunfish
 from chessbot import ChessBot
 from pystockfish import Engine
 from datetime import datetime
+import keras.backend as K
 
 chessbot = ChessBot()
 stockfish = Engine(depth=20, param={"Threads": 10, "Hash": 8000})
@@ -301,6 +302,8 @@ class Trainer:
             chessbot.save_model()
 
     def train_from_cache(self):
+        orig_LR = K.get_value(chessbot.model.optimizer.lr)
+        K.set_value(chessbot.model.optimizer.lr, orig_LR / 1000)
         models = {}
         i = chessbot.max_cache - 1
         # categorise cache by model
@@ -336,6 +339,7 @@ class Trainer:
                 chessbot.model.train_on_batch(batch_x, batch_y)
                 model_trained_moves_tally[chessbot.model_name+"_cache"] += batch_size
             chessbot.save_model()
+        K.set_value(chessbot.model.optimizer.lr, orig_LR)
 
 
     def validation(self):
