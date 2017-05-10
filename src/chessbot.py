@@ -27,42 +27,44 @@ class ChessBot:
         self.load_model(self.choose_model(board))
         self.player = board.turn
         self.time_limit = time.time() + think_time
-        score, move, dead = self.score_move(board, depth)
+        score_move = self.score_move(board, depth)
         if eval:
-            print(score, self.states_evaled)
-        return move
+            print(score_move['score'], self.states_evaled)
+        return score_move['move']
 
     def score_move(self, board, depth, alpha=0, beta=1):
         moves = list(board.legal_moves)
         if len(moves) == 0 or depth == 0:
-            move_score = self.eval_move(board)
-            return move_score['score'], None, True
+            return self.eval_move(board)
         max_player = board.turn == self.player
         best_score = None
         best_move = None
 
         move_scores = self.possible_moves(moves, board)
         move_scores.sort(key=lambda x: x['score'], reverse=max_player)
+        moves_temp_order = list(move_scores)
 
         while True:
-            best_move = move_scores[0]['move']
-            best_score = move_scores[0]['score']
+            best_move = move_scores[0]
             if time.time() > self.time_limit:
                 break
             move_to_eval = None
             i = 0
             while True:
-                if i >= len(move_scores):
+                if i >= len(moves_temp_order):
                     break
-                if not move_scores[i]['dead']:
-                    move_to_eval = move_scores[i]
+                if not moves_temp_order[i]['dead']:
+                    move_to_eval = moves_temp_order[i]
                     break
                 i += 1
             if not move_to_eval:
-                return best_score, best_move, True
+                best_move['dead'] = True
+                return best_move
             #if move to eval is within limits
             if alpha >= move_to_eval['score'] or move_to_eval['score'] >= beta:
-                return best_score, best_move, True
+                best_move['temp_score'] = move_to_eval['score']
+                best_move['dead'] = False
+                return best_move
             # print(move_to_eval)
             temp_alpha = alpha
             temp_beta = beta
@@ -74,18 +76,25 @@ class ChessBot:
                     temp_beta = min([temp_beta, temp_limit])
             #go deeper
             board.push(move_to_eval['move'])
-            score, bm, dead = self.score_move(board, depth-1, temp_alpha, temp_beta)
+            move_to_eval_temp = self.score_move(board, depth-1, temp_alpha, temp_beta)
             #cache updated score
             board_hash = board.board_fen() + str(int(board.turn))
-            self.cache[0][board_hash] = {'score': score, 'dead': dead, 'train_fen': board.fen(), 'train_model': self.model_name}
-            move_to_eval['dead'] = dead
-            if score != move_to_eval['score']: #if score changed then sort
-                del move_scores[i]
-                move_to_eval['score'] = score
-                self.insert_sorted(move_scores, move_to_eval, lambda x: x['score'], max_player)
+            self.cache[0][board_hash] = {
+                'score': move_to_eval_temp['score'],
+                'dead': move_to_eval_temp['dead'],
+                'train_fen': board.fen(),
+                'train_model': self.model_name
+            }
+            move_to_eval['dead'] = move_to_eval_temp['dead']
+            move_to_eval['score'] = move_to_eval_temp['score']
+            move_to_eval['temp_score'] = move_to_eval_temp['temp_score']
+            move_scores.remove(move_to_eval)
+            moves_temp_order.remove(move_to_eval)
+            self.insert_sorted(move_scores, move_to_eval, lambda x: x['score'], max_player)
+            self.insert_sorted(moves_temp_order, move_to_eval, lambda x: x['temp_score'], max_player)
             board.pop()
-            
-        return best_score, best_move, False
+        
+        return best_move
  
     def eval_move(self, board):
         moves = list(board.legal_moves)
@@ -112,14 +121,13 @@ class ChessBot:
                 out = self.model.predict(batch_x, verbose=0)
                 score = out[0][0]
                 #cache score
-                self.cache[0][board_hash] = {'score': score, 'dead': dead }
+                self.cache[0][board_hash] = {'score': score, 'dead': dead}
             if score > 0.5 and board.can_claim_threefold_repetition():
                 score = 0.5
                 dead = True
-        if not board.turn == self.player:
-            return {'score': score, 'dead': dead}
-        else:
-            return {'score': 1-score, 'dead': dead}
+        move_score = {'dead': dead, 'move': None, 'score' : score if board.turn != self.player else 1 - score}
+        move_score['temp_score'] = move_score['score']
+        return move_score
 
     def possible_moves(self, moves, board):
         move_scores = []
