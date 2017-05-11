@@ -19,9 +19,7 @@ class ChessBot:
         self.cache = [{}] * self.max_cache
 
     def best_move(self, board, depth=6, eval=False, think_time=30):
-        #clean old cache
-        self.cache.insert(0, {})
-        self.cache = self.cache[:self.max_cache]
+        self.prepare_cache()
         self.states_evaled = 0
 
         self.load_model(self.choose_model(board))
@@ -32,12 +30,21 @@ class ChessBot:
             print(score_move['score'], self.states_evaled)
         return score_move['move']
 
+    def prepare_cache(self):
+        #clear dead states
+        for m in self.cache[0].values():
+            m['dead'] = False
+        #clean old cache
+        self.cache.insert(0, {})
+        self.cache = self.cache[:self.max_cache]
+
     def score_move(self, board, depth, alpha=0, beta=1):
         moves = list(board.legal_moves)
         if len(moves) == 0 or depth == 0:
-            return self.eval_move(board)
+            move_score = self.eval_move(board)
+            move_score['dead'] = True
+            return move_score
         max_player = board.turn == self.player
-        best_score = None
         best_move = None
 
         move_scores = self.possible_moves(moves, board)
@@ -59,11 +66,14 @@ class ChessBot:
                 i += 1
             if not move_to_eval:
                 best_move['dead'] = True
+                # print(move_to_eval)
                 return best_move
             #if move to eval is within limits
-            if alpha >= move_to_eval['score'] or move_to_eval['score'] >= beta:
+            score = move_to_eval['score']
+            if alpha >= score or score >= beta:
                 best_move['temp_score'] = move_to_eval['score']
                 best_move['dead'] = False
+                # print(move_to_eval)
                 return best_move
             # print(move_to_eval)
             temp_alpha = alpha
@@ -71,9 +81,15 @@ class ChessBot:
             if len(move_scores) > i+1:
                 temp_limit = move_scores[i+1]['score']
                 if max_player:
-                    temp_alpha = max([temp_alpha, temp_limit])
+                    if temp_limit > temp_alpha:
+                        temp_alpha = temp_limit - 0.005
+                        if temp_alpha > 1:
+                            temp_alpha = 1
                 else:
-                    temp_beta = min([temp_beta, temp_limit])
+                    if temp_limit < temp_beta:
+                        temp_beta = temp_limit + 0.005
+                        if temp_beta < 0:
+                            temp_beta = 0
             #go deeper
             board.push(move_to_eval['move'])
             move_to_eval_temp = self.score_move(board, depth-1, temp_alpha, temp_beta)
@@ -111,7 +127,7 @@ class ChessBot:
             cached = self.from_cache(board_hash)
             if cached:
                 score = cached['score']
-                # dead = cached['dead']
+                dead = cached['dead']
             else:
                 # run neural network
                 # print(len(board.move_stack))
