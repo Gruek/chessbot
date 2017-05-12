@@ -10,6 +10,7 @@ def softmax(x):
 
 class ChessBot:
     def __init__(self):
+        self.SCORE_MARGIN = 0.005
         self.max_cache = 100
         self.cache = [{}] * self.max_cache
         self.model = get_model()
@@ -81,15 +82,9 @@ class ChessBot:
             if len(move_scores) > i+1:
                 temp_limit = move_scores[i+1]['score']
                 if max_player:
-                    if temp_limit > temp_alpha:
-                        temp_alpha = temp_limit - 0.005
-                        if temp_alpha > 1:
-                            temp_alpha = 1
+                    temp_alpha = max([temp_alpha, temp_limit - self.SCORE_MARGIN])
                 else:
-                    if temp_limit < temp_beta:
-                        temp_beta = temp_limit + 0.005
-                        if temp_beta < 0:
-                            temp_beta = 0
+                    temp_beta = min([temp_beta, temp_limit + self.SCORE_MARGIN])
             #go deeper
             board.push(move_to_eval['move'])
             move_to_eval_temp = self.score_move(board, depth-1, temp_alpha, temp_beta)
